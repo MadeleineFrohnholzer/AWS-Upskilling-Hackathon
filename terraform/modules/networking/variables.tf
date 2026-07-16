@@ -16,14 +16,26 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
-variable "private_subnet_cidrs" {
-  description = "CIDR blocks for private subnets"
+variable "public_subnet_cidrs" {
+  description = "CIDR blocks for public subnets (2 AZs)"
   type        = list(string)
   default     = ["10.0.1.0/24", "10.0.2.0/24"]
+}
+
+variable "private_subnet_cidrs" {
+  description = "CIDR blocks for private subnets (2 AZs)"
+  type        = list(string)
+  default     = ["10.0.10.0/24", "10.0.11.0/24"]
 }
 
 variable "availability_zones" {
   description = "Availability zones for subnets"
   type        = list(string)
   default     = ["eu-central-1a", "eu-central-1b"]
+}
+
+variable "enable_nat_gateway" {
+  description = "Whether to create a NAT Gateway (only needed if services require outbound internet)"
+  type        = bool
+  default     = false
 }

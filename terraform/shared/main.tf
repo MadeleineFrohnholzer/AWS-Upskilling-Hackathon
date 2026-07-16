@@ -1,8 +1,8 @@
 # =============================================================================
-# Dev Environment — Root Module
+# Shared Infrastructure (Pre-provisioned before hackathon)
 # =============================================================================
-# This is the entry point for the hackathon dev environment.
-# It wires together all modules.
+# This deploys the VPC, networking, VPC endpoints, and ALB skeleton.
+# Both teams consume these outputs via terraform_remote_state.
 
 terraform {
   required_version = ">= 1.7.0"
@@ -16,7 +16,7 @@ terraform {
 
   backend "s3" {
     bucket         = "hackathon-tf-state-REPLACE_WITH_ACCOUNT_ID"
-    key            = "dev/terraform.tfstate"
+    key            = "shared/terraform.tfstate"
     region         = "eu-central-1"
     dynamodb_table = "hackathon-tf-locks"
     encrypt        = true
@@ -29,37 +29,20 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = var.project_name
-      Environment = var.environment
+      Environment = "shared"
       ManagedBy   = "terraform"
     }
   }
 }
 
-# -----------------------------------------------------------------------------
-# Modules
-# -----------------------------------------------------------------------------
 module "networking" {
-  source = "../../modules/networking"
+  source = "../modules/networking"
 
   project_name         = var.project_name
   region               = var.region
   vpc_cidr             = var.vpc_cidr
+  public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
   availability_zones   = var.availability_zones
-}
-
-module "storage" {
-  source = "../../modules/storage"
-
-  project_name = var.project_name
-  environment  = var.environment
-}
-
-module "compute" {
-  source = "../../modules/compute"
-
-  project_name       = var.project_name
-  environment        = var.environment
-  vpc_id             = module.networking.vpc_id
-  private_subnet_ids = module.networking.private_subnet_ids
+  enable_nat_gateway   = var.enable_nat_gateway
 }
