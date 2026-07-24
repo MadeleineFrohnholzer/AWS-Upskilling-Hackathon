@@ -14,7 +14,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "hackathon-tf-state-REPLACE_WITH_ACCOUNT_ID"
+    bucket         = "hackathon-tf-state-064453091991"
     key            = "team2/terraform.tfstate"
     region         = "eu-central-1"
     dynamodb_table = "hackathon-tf-locks"
@@ -41,7 +41,7 @@ provider "aws" {
 data "terraform_remote_state" "shared" {
   backend = "s3"
   config = {
-    bucket = "hackathon-tf-state-REPLACE_WITH_ACCOUNT_ID"
+    bucket = "hackathon-tf-state-064453091991"
     key    = "shared/terraform.tfstate"
     region = "eu-central-1"
   }
@@ -51,7 +51,7 @@ data "terraform_remote_state" "shared" {
 data "terraform_remote_state" "team1" {
   backend = "s3"
   config = {
-    bucket = "hackathon-tf-state-REPLACE_WITH_ACCOUNT_ID"
+    bucket = "hackathon-tf-state-064453091991"
     key    = "team1/terraform.tfstate"
     region = "eu-central-1"
   }
