@@ -228,8 +228,8 @@ Try one or more of these:
 ## What's Next
 
 Now that you've seen the full cycle, you'll be working on real modules in your team:
-- **Team 0 (Aigul, Zoltan, Sandro):** S3 buckets, Lambda, Bedrock KB, DynamoDB in `terraform/team0/`
-- **Team 1 (Nikos, Yildrim, Nicolas):** Cognito, ECS cluster, Bedrock Agent in `terraform/team1/`
+- **Team 0 (Aigul, Sandro):** S3 buckets, Lambda, Bedrock KB, DynamoDB in `terraform/team0/`
+- **Team 1 (Zoltan, Nikos, Yildrim, Nicolas):** Cognito, ECS cluster, Bedrock Agent in `terraform/team1/`
 
 The skeleton code is already in the repo. Your job is to understand it, extend it, and make it work.
 

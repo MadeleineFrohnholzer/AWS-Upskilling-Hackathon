@@ -18,7 +18,7 @@ Grant all hackathon participants access to the AWS account with least-privilege 
 | Name | Email | Team | Role |
 |------|-------|------|------|
 | Aigul | aigul@accenture.com | Team 0 | team0-developer |
-| Zoltan | zoltan.szilagyi@accenture.com | Team 0 | team0-developer |
+| Zoltan | zoltan.szilagyi@accenture.com | Team 1 | team1-developer |
 | Sandro | sandro@accenture.com | Team 0 | team0-developer |
 | Nikos | nikos@accenture.com | Team 1 | team1-developer |
 | Yildrim | yildrim@accenture.com | Team 1 | team1-developer |

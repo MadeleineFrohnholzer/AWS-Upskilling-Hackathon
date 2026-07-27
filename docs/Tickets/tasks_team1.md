@@ -1,6 +1,6 @@
 # M0 — Foundation & Ingestion: Detailed Ticket Specifications
 
-> **Milestone owner:** Team 0 (Aigul, Zoltan, Sandro)
+> **Milestone owner:** Team 0 (Aigul, Sandro)
 > **Definition of done:** A document can be uploaded, tagged, vectorized, and retrieved with metadata filters.
 > **State file:** `team0/terraform.tfstate` — backend bucket `hackathon-tf-state-064453091991`, region `eu-central-1`
 > **Critical outputs for Team 1:** `bedrock_kb_id`, `bedrock_kb_arn`, `s3_vector_store_arn`, `landing_bucket_name`
