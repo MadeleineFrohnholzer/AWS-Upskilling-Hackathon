@@ -1,847 +1,1423 @@
-# Team 0 — Shared Infrastructure: Detailed Ticket Specifications
+# M0 — Foundation & Ingestion: Detailed Ticket Specifications
 
-> **Owner:** Organizers / Platform team (must be complete **before Day 1 09:00**)
-> **Purpose:** Pre-provision everything both teams consume via `terraform_remote_state`. Neither team can start coding until all tickets here are green.
-> **State file:** `shared/terraform.tfstate` — backend bucket `hackathon-tf-state-064453091991`, region `eu-central-1`
-> **Apply order:** T0-01 → T0-02 → T0-03 → T0-04 → T0-05 → T0-06 → T0-07
+> **Milestone owner:** Team 0 (Aigul, Sandro)
+> **Definition of done:** A document can be uploaded, tagged, vectorized, and retrieved with metadata filters.
+> **State file:** `team0/terraform.tfstate` — backend bucket `hackathon-tf-state-064453091991`, region `eu-central-1`
+> **Critical outputs for Team 1:** `bedrock_kb_id`, `bedrock_kb_arn`, `s3_vector_store_arn`, `landing_bucket_name`
 
 ---
 
-## TICKET T0-01 — AWS Account + IAM Participant Access
+## What's Already Done (Storage Module — Day 1 Complete)
+
+The `modules/storage` module already provisions:
+
+| Resource | Name pattern | Status |
+|----------|-------------|--------|
+| S3 landing bucket | `knowledge-base-landing-<random>` | Done — KMS encrypted, versioned, public-access blocked |
+| S3 processed bucket | `knowledge-base-processed-<random>` | Done — KMS encrypted, versioned, public-access blocked |
+| DynamoDB sessions table | `knowledge-base-sessions` | Done — PAY_PER_REQUEST, TTL on `expires_at` |
+| DynamoDB feedback table | `knowledge-base-feedback` | Done — hash: `feedback_id`, range: `timestamp` |
+
+**Remaining work is organized into five tickets below.**
+
+---
+
+## TICKET M0-01 — DynamoDB Documents Table + S3 Bucket Policy
 
 ### Goal
 
-Grant all hackathon participants access to the AWS account with least-privilege IAM roles scoped to their team's resources. No participant should have root or `AdministratorAccess`.
+Add a **documents catalog table** in DynamoDB to track upload state and metadata for every file. Also attach bucket policies so Bedrock Knowledge Base can read from the processed bucket (required for M0-04).
 
-### Participant List
+### Why a Separate Document Table
 
-| Name | Email | Team | Role |
-|------|-------|------|------|
-| Aigul | aigul@accenture.com | Team 0 | team0-developer |
-| Zoltan | zoltan.szilagyi@accenture.com | Team 1 | team1-developer |
-| Sandro | sandro@accenture.com | Team 0 | team0-developer |
-| Nikos | nikos@accenture.com | Team 1 | team1-developer |
-| Yildrim | yildrim@accenture.com | Team 1 | team1-developer |
-| Nicolas | nicolas@accenture.com | Team 1 | team1-developer |
+The existing `sessions` and `feedback` tables serve different purposes. We need a queryable index of every uploaded document so the digest Lambda (M0-05) can report statistics per Industry/Type, and so the sidecar Lambda (M0-03) can look up metadata by document ID.
 
 ### Terraform Resources
 
+Add to `terraform/modules/storage/main.tf` (or directly to `terraform/team0/main.tf`):
+
 ```hcl
 # -------------------------------------------------------
-# Team 0 IAM Role — Foundation / Ingestion (M0)
+# DynamoDB: Document Catalog
+# Tracks every upload: state, metadata, S3 location
 # -------------------------------------------------------
-resource "aws_iam_role" "team0_developer" {
-  name = "hackathon-team0-developer"
+resource "aws_dynamodb_table" "documents" {
+  name         = "${var.project_name}-documents"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "document_id"
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
+  attribute {
+    name = "document_id"
+    type = "S"
+  }
+
+  # GSI: query documents by Industry
+  attribute {
+    name = "industry"
+    type = "S"
+  }
+
+  # GSI: query documents by upload timestamp
+  attribute {
+    name = "uploaded_at"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "industry-uploaded_at-index"
+    hash_key        = "industry"
+    range_key       = "uploaded_at"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "${var.project_name}-documents"
+    Environment = var.environment
+  }
 }
+```
 
-resource "aws_iam_role_policy" "team0_developer" {
-  name = "team0-scoped-access"
-  role = aws_iam_role.team0_developer.id
+DynamoDB item schema (for reference — enforced by Lambda, not DynamoDB):
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      # Terraform state backend (read all, write only own key)
-      {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team0/*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject"]
-        Resource = [
-          "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/shared/*",
-          "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team1/*"
-        ]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
-        Resource = "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}"
-      },
-      # DynamoDB lock table
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
-        Resource = "arn:aws:dynamodb:eu-central-1:${data.aws_caller_identity.current.account_id}:table/hackathon-tf-locks"
-      },
-      # Full access to resources tagged Team=team1-ingestion
-      {
-        Effect    = "Allow"
-        Action    = ["s3:*", "lambda:*", "apigateway:*", "dynamodb:*", "bedrock:*",
-                     "iam:PassRole", "logs:*", "events:*", "ses:*"]
-        Resource  = "*"
-        Condition = {
-          StringEquals = { "aws:ResourceTag/Team" = "team0-ingestion" }
-        }
-      },
-      # Allow creating tagged resources (tags checked at creation time)
-      {
-        Effect   = "Allow"
-        Action   = ["s3:CreateBucket", "lambda:CreateFunction", "dynamodb:CreateTable",
-                    "iam:CreateRole", "iam:PutRolePolicy", "iam:AttachRolePolicy"]
-        Resource = "*"
-      },
-      # Read-only shared networking (cannot modify)
-      {
-        Effect   = "Allow"
-        Action   = ["ec2:Describe*", "elasticloadbalancing:Describe*"]
-        Resource = "*"
-      },
-      # CloudWatch for own log groups
-      {
-        Effect   = "Allow"
-        Action   = ["logs:*"]
-        Resource = "arn:aws:logs:eu-central-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/knowledge-base-*"
-      }
+```json
+{
+  "document_id":  "uuid-v4",
+  "filename":     "accenture-banking-poc-2025.pdf",
+  "s3_key":       "uploads/uuid-v4/accenture-banking-poc-2025.pdf",
+  "industry":     "Banking",
+  "type":         "PoC",
+  "project":      "Titan",
+  "client":       "",
+  "topic":        "Engineering",
+  "uploaded_by":  "zoltan.szilagyi@accenture.com",
+  "uploaded_at":  "2026-07-28T09:00:00Z",
+  "status":       "UPLOADED | SIDECAR_CREATED | INDEXED | FAILED",
+  "sidecar_key":  "uploads/uuid-v4/accenture-banking-poc-2025.pdf.metadata.json"
+}
+```
+
+S3 bucket policy for Bedrock KB access (add to `terraform/team0/main.tf`):
+
+```hcl
+# Allow Bedrock Knowledge Base service to read the processed bucket
+data "aws_iam_policy_document" "bedrock_kb_s3" {
+  statement {
+    sid     = "BedrockKBRead"
+    effect  = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["bedrock.amazonaws.com"]
+    }
+    actions   = ["s3:GetObject", "s3:ListBucket"]
+    resources = [
+      module.storage.processed_bucket_arn,
+      "${module.storage.processed_bucket_arn}/*"
     ]
-  })
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
 }
 
-# -------------------------------------------------------
-# Team 1 IAM Role — Access / Knowledge App (M1)
-# -------------------------------------------------------
-resource "aws_iam_role" "team1_developer" {
-  name = "hackathon-team1-developer"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "team1_developer" {
-  name = "team1-scoped-access"
-  role = aws_iam_role.team1_developer.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      # Terraform state backend
-      {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team1/*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject"]
-        Resource = [
-          "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/shared/*",
-          "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team0/*"
-        ]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
-        Resource = "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}"
-      },
-      # DynamoDB lock table
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
-        Resource = "arn:aws:dynamodb:eu-central-1:${data.aws_caller_identity.current.account_id}:table/hackathon-tf-locks"
-      },
-      # Cognito, ECS, ECR, Bedrock Agent, ALB target groups
-      {
-        Effect   = "Allow"
-        Action   = ["cognito-idp:*", "ecs:*", "ecr:*", "bedrock:*", "bedrock-agent:*",
-                    "bedrock-agent-runtime:*", "elasticloadbalancing:*", "iam:PassRole",
-                    "iam:CreateRole", "iam:PutRolePolicy", "iam:AttachRolePolicy",
-                    "lambda:*", "apigateway:*", "ssm:*", "secretsmanager:*", "logs:*"]
-        Resource = "*"
-        Condition = {
-          StringEquals = { "aws:ResourceTag/Team" = "team1-app" }
-        }
-      },
-      # Allow creating tagged resources
-      {
-        Effect   = "Allow"
-        Action   = ["iam:CreateRole", "iam:PutRolePolicy", "cognito-idp:CreateUserPool",
-                    "ecs:CreateCluster", "ecr:CreateRepository"]
-        Resource = "*"
-      },
-      # Read-only shared networking
-      {
-        Effect   = "Allow"
-        Action   = ["ec2:Describe*", "elasticloadbalancing:Describe*"]
-        Resource = "*"
-      }
-    ]
-  })
+resource "aws_s3_bucket_policy" "processed_bedrock" {
+  bucket = module.storage.processed_bucket_id
+  policy = data.aws_iam_policy_document.bedrock_kb_s3.json
 }
 
 data "aws_caller_identity" "current" {}
 ```
 
-### AWS SSO / IAM Identity Center Setup (Manual)
-
-If the account uses AWS IAM Identity Center (SSO):
-
-1. Go to IAM Identity Center → Users → Add each participant
-2. Create permission sets `team0-developer` and `team1-developer` with the policies above
-3. Assign participants to permission sets in the `eu-central-1` account
-4. Share the SSO start URL: `https://<org-id>.awsapps.com/start`
-
-If using plain IAM users (simpler for hackathon):
-
-```bash
-# Create users and generate temporary credentials
-for user in aigul zoltan sandro; do
-  aws iam create-user --user-name "hackathon-$user"
-  aws iam create-access-key --user-name "hackathon-$user"
-  # Share access key + secret securely (use 1Password / SSM Parameter)
-done
-```
-
-### AWS CLI Profile Setup (share with participants)
-
-Participants add this to `~/.aws/config`:
-
-```ini
-[profile hackathon]
-region = eu-central-1
-role_arn = arn:aws:iam::064453091991:role/hackathon-team0-developer  # or team1
-source_profile = default  # or sso, depending on auth method
-```
-
-Verify it works:
-
-```bash
-aws sts get-caller-identity --profile hackathon
-```
-
-### Acceptance Criteria
-
-- [ ] All 6 participants can run `aws sts get-caller-identity --profile hackathon` successfully
-- [ ] Team 0 members cannot modify Team 1 resources (and vice versa) — test by attempting `aws ecs list-clusters --profile hackathon` from a Team 0 account
-- [x] No participant has `AdministratorAccess` or root credentials
-- [x] Each team can read the other's Terraform state (needed for `terraform_remote_state` data sources)
-- [ ] Terraform can assume the role and run `terraform plan` from each team's directory
-
-### Effort Estimate
-
-**Day -1 (evening before hackathon)** — 1 hour
-
----
-
-## TICKET T0-02 — Terraform State Backend
-
-### Goal
-
-Bootstrap the S3 bucket and DynamoDB table used as the Terraform remote state backend. This must be the very first thing applied — all other Terraform configurations depend on it.
-
-### What's Already Written
-
-[terraform/backend/main.tf](../../terraform/backend/main.tf) already defines:
-- `aws_s3_bucket.terraform_state` — KMS encrypted, versioned, `prevent_destroy = true`
-- `aws_dynamodb_table.terraform_locks` — `LockID` hash key, PAY_PER_REQUEST
-- Bucket name: `hackathon-tf-state-<account_id>` (e.g. `hackathon-tf-state-064453091991`)
-
-### Apply Steps
-
-The backend directory has **no remote backend itself** (bootstrapping problem) — it uses local state:
-
-```bash
-cd terraform/backend
-
-terraform init        # local state only — no backend block in backend/main.tf
-terraform apply
-
-# Verify
-aws s3 ls | grep hackathon-tf-state
-aws dynamodb describe-table --table-name hackathon-tf-locks --query "Table.TableStatus"
-```
-
-After apply, note the bucket name and hard-code it in all team `backend {}` blocks (already done in team0/main.tf and team1/main.tf: `hackathon-tf-state-064453091991`).
-
-### Missing Variable File
-
-The backend module needs a `variables.tf`. Create it:
+Add outputs to `terraform/team0/outputs.tf`:
 
 ```hcl
-# terraform/backend/variables.tf
-variable "region" {
-  description = "AWS region for state backend"
-  type        = string
-  default     = "eu-central-1"
+output "documents_table_name" {
+  description = "DynamoDB documents catalog table name"
+  value       = aws_dynamodb_table.documents.name
+}
+
+output "documents_table_arn" {
+  description = "DynamoDB documents catalog table ARN"
+  value       = aws_dynamodb_table.documents.arn
 }
 ```
 
-### Post-Apply: State File Layout
-
-| State Key | Who Applies | Contents |
-|-----------|-------------|---------|
-| `backend/terraform.tfstate` | Organizer (local) | State bucket + lock table |
-| `shared/terraform.tfstate` | Organizer | VPC, networking, endpoints, ALB, security groups |
-| `team0/terraform.tfstate` | Team 0 | S3, Lambda, API GW, Bedrock KB, DynamoDB |
-| `team1/terraform.tfstate` | Team 1 | Cognito, ECS, ECR, Bedrock Agent, ALB rules |
-| `verify-endpoints/terraform.tfstate` | Organizer | Temporary verification Lambda (destroy after Day 1) |
-
 ### Acceptance Criteria
 
-- [ ] `aws s3 ls s3://hackathon-tf-state-064453091991` lists the bucket (no AccessDenied)
-- [ ] `aws s3api get-bucket-versioning --bucket hackathon-tf-state-064453091991` returns `"Status": "Enabled"`
-- [ ] `aws dynamodb describe-table --table-name hackathon-tf-locks` returns `"TableStatus": "ACTIVE"`
-- [ ] `aws s3api get-bucket-encryption --bucket hackathon-tf-state-064453091991` shows SSE-KMS
-- [x] Running `terraform init` in `terraform/team0/` succeeds (backend can be reached)
+- [x] `terraform apply` creates the `knowledge-base-documents` table
+- [x] GSI `industry-uploaded_at-index` exists and is ACTIVE
+- [ ] `aws dynamodb describe-table --table-name knowledge-base-documents` returns `TableStatus: ACTIVE`
+- [x] S3 bucket policy on the processed bucket is applied — Bedrock service principal can read it
+- [ ] A manual `aws dynamodb put-item` with a test document record succeeds
+- [ ] Query by GSI: `aws dynamodb query --table-name knowledge-base-documents --index-name industry-uploaded_at-index --key-condition-expression "industry = :i" --expression-attribute-values '{":i":{"S":"Banking"}}'` returns results
 
 ### Effort Estimate
 
-**Day -1** — 15 minutes (one-time bootstrap)
+**Day 1 afternoon** — 30 minutes alongside S3/DynamoDB module
 
 ---
 
-## TICKET T0-03 — VPC + Subnets + Route Tables + Security Groups
+## TICKET M0-02 — API Gateway + Lambda Presigned URL Generator
 
 ### Goal
 
-Deploy the foundational network: one VPC (`10.0.0.0/16`), two public and two private subnets across `eu-central-1a` and `eu-central-1b`, route tables, and the baseline security groups used by Lambda, ECS, and the ALB.
+Expose a REST API (VPC-only, no public endpoint) with a `POST /upload-url` endpoint. The Lambda generates an S3 presigned PUT URL valid for 15 minutes, records the document metadata in DynamoDB, and returns everything the caller needs to upload a file directly to S3.
 
-### What's Already Written
+### API Contract
 
-[terraform/modules/networking/main.tf](../../terraform/modules/networking/main.tf) already covers:
+```
+POST /upload-url
+Content-Type: application/json
 
-| Resource | Details |
-|----------|---------|
-| `aws_vpc.main` | `10.0.0.0/16`, DNS support + hostnames enabled |
-| `aws_subnet.public[0,1]` | `10.0.1.0/24`, `10.0.2.0/24` — no public IPs |
-| `aws_subnet.private[0,1]` | `10.0.10.0/24`, `10.0.11.0/24` |
-| `aws_internet_gateway.main` | Attached to VPC |
-| `aws_route_table.public` | 0.0.0.0/0 → IGW |
-| `aws_route_table.private` | No internet route (PrivateLink only) |
-| `aws_nat_gateway.main` | Optional, `enable_nat_gateway = false` by default |
-| `aws_security_group.lambda` | Egress 443 to VPC CIDR only |
-| `aws_security_group.ecs_tasks` | Inbound 8080 from ALB SG, egress 443 to VPC CIDR |
-| `aws_security_group.alb` | Inbound 443/80 from `10.0.0.0/8` (VPN), egress to VPC only |
-| `aws_security_group.vpc_endpoints` | Inbound 443 from VPC CIDR |
+{
+  "filename":    "accenture-banking-poc-2025.pdf",
+  "industry":    "Banking",
+  "type":        "PoC",
+  "project":     "Titan",
+  "topic":       "Engineering",
+  "client":      "",
+  "uploaded_by": "zoltan.szilagyi@accenture.com"
+}
 
-### Apply Steps
-
-```bash
-cd terraform/shared
-terraform init
-terraform plan   # review — expect ~30 resources
-terraform apply
+→ 200 OK
+{
+  "document_id": "a3f2c1d0-...",
+  "upload_url":  "https://s3.eu-central-1.amazonaws.com/knowledge-base-landing-.../uploads/a3f2c1d0-.../accenture-banking-poc-2025.pdf?X-Amz-...",
+  "s3_key":      "uploads/a3f2c1d0-.../accenture-banking-poc-2025.pdf",
+  "expires_in":  900
+}
 ```
 
-### VPN CIDR Note
+### Lambda Implementation
 
-The ALB security group ingress uses `10.0.0.0/8` as the corporate VPN CIDR. Confirm the actual VPN IP range with the network team and adjust if needed:
+Create `terraform/team0/lambda/presigned_url/index.py`:
+
+```python
+import boto3
+import json
+import os
+import uuid
+from datetime import datetime, timezone
+
+s3 = boto3.client("s3")
+dynamodb = boto3.resource("dynamodb")
+
+LANDING_BUCKET   = os.environ["LANDING_BUCKET"]
+DOCUMENTS_TABLE  = os.environ["DOCUMENTS_TABLE"]
+PRESIGN_EXPIRY   = 900  # 15 minutes
+
+VALID_INDUSTRIES = {"Banking", "Automotive", "Healthcare", "Energy", "Retail",
+                    "Technology", "Insurance", "Telecom", "Other"}
+VALID_TYPES      = {"PoC", "RFP", "Case Study", "Proposal", "Architecture",
+                    "Strategy", "Report", "Other"}
+
+def handler(event, context):
+    try:
+        body = json.loads(event.get("body") or "{}")
+    except json.JSONDecodeError:
+        return _error(400, "Invalid JSON body")
+
+    filename    = body.get("filename", "").strip()
+    industry    = body.get("industry", "Other")
+    doc_type    = body.get("type", "Other")
+    project     = body.get("project", "")
+    topic       = body.get("topic", "")
+    client      = body.get("client", "")
+    uploaded_by = body.get("uploaded_by", "")
+
+    if not filename:
+        return _error(400, "filename is required")
+    if industry not in VALID_INDUSTRIES:
+        return _error(400, f"industry must be one of: {sorted(VALID_INDUSTRIES)}")
+    if doc_type not in VALID_TYPES:
+        return _error(400, f"type must be one of: {sorted(VALID_TYPES)}")
+
+    document_id  = str(uuid.uuid4())
+    s3_key       = f"uploads/{document_id}/{filename}"
+    uploaded_at  = datetime.now(timezone.utc).isoformat()
+
+    # Write metadata to DynamoDB before generating the URL
+    table = dynamodb.Table(DOCUMENTS_TABLE)
+    table.put_item(Item={
+        "document_id": document_id,
+        "filename":    filename,
+        "s3_key":      s3_key,
+        "industry":    industry,
+        "type":        doc_type,
+        "project":     project,
+        "topic":       topic,
+        "client":      client,
+        "uploaded_by": uploaded_by,
+        "uploaded_at": uploaded_at,
+        "status":      "PENDING_UPLOAD"
+    })
+
+    # Generate presigned PUT URL
+    upload_url = s3.generate_presigned_url(
+        "put_object",
+        Params={
+            "Bucket": LANDING_BUCKET,
+            "Key":    s3_key,
+            "ContentType": "application/octet-stream"
+        },
+        ExpiresIn=PRESIGN_EXPIRY
+    )
+
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps({
+            "document_id": document_id,
+            "upload_url":  upload_url,
+            "s3_key":      s3_key,
+            "expires_in":  PRESIGN_EXPIRY
+        })
+    }
+
+def _error(code, message):
+    return {
+        "statusCode": code,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps({"error": message})
+    }
+```
+
+### Terraform Resources
+
+Add to `terraform/team0/main.tf`:
 
 ```hcl
-# In modules/networking/main.tf, ALB SG ingress:
-cidr_blocks = [var.vpc_cidr, "10.0.0.0/8"]  # adjust "10.0.0.0/8" to actual VPN CIDR
-```
+# -------------------------------------------------------
+# IAM Role for presigned URL Lambda
+# -------------------------------------------------------
+resource "aws_iam_role" "presign_lambda" {
+  name = "${var.project_name}-presign-lambda-role"
 
-### What to Verify After Apply
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
 
-```bash
-# VPC exists and DNS is enabled
-aws ec2 describe-vpcs --filters "Name=tag:Name,Values=knowledge-base-vpc" \
-  --query "Vpcs[0].{ID:VpcId,DNS:EnableDnsSupport,CIDRBlock:CidrBlock}"
+resource "aws_iam_role_policy" "presign_lambda" {
+  name = "presign-permissions"
+  role = aws_iam_role.presign_lambda.id
 
-# 4 subnets (2 public, 2 private)
-aws ec2 describe-subnets --filters "Name=vpc-id,Values=<vpc-id>" \
-  --query "Subnets[*].{Name:Tags[?Key=='Name']|[0].Value,CIDR:CidrBlock,AZ:AvailabilityZone}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = "${module.storage.landing_bucket_arn}/uploads/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
+        Resource = aws_dynamodb_table.documents.arn
+      },
+      {
+        Effect = "Allow"
+        Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
 
-# 4 security groups created
-aws ec2 describe-security-groups --filters "Name=vpc-id,Values=<vpc-id>" \
-  --query "SecurityGroups[*].{Name:GroupName,ID:GroupId}"
-```
+resource "aws_iam_role_policy_attachment" "presign_vpc" {
+  role       = aws_iam_role.presign_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
 
-### Acceptance Criteria
+# -------------------------------------------------------
+# Lambda: presigned URL generator
+# -------------------------------------------------------
+data "archive_file" "presign_lambda" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda/presigned_url"
+  output_path = "${path.module}/lambda/presigned_url.zip"
+}
 
-- [ ] VPC `10.0.0.0/16` exists with `EnableDnsSupport: true` and `EnableDnsHostnames: true`
-- [ ] 4 subnets across 2 AZs — `eu-central-1a` and `eu-central-1b`
-- [ ] Private subnets have **no route to 0.0.0.0/0** (confirm in route table)
-- [ ] Public subnets route to the Internet Gateway
-- [ ] 4 security groups exist: `*-vpce-sg`, `*-alb-*`, `*-lambda-*`, `*-ecs-*`
-- [ ] Lambda SG has no inbound rules (Lambda initiates all connections outbound)
-- [ ] ECS SG allows inbound 8080 only from ALB SG (not from 0.0.0.0/0)
-- [ ] `terraform output vpc_id` returns a valid VPC ID
+resource "aws_lambda_function" "presign" {
+  function_name    = "${var.project_name}-presign-url"
+  role             = aws_iam_role.presign_lambda.arn
+  runtime          = "python3.12"
+  handler          = "index.handler"
+  timeout          = 10
+  memory_size      = 128
+  filename         = data.archive_file.presign_lambda.output_path
+  source_code_hash = data.archive_file.presign_lambda.output_base64sha256
 
-### Effort Estimate
+  environment {
+    variables = {
+      LANDING_BUCKET  = module.storage.landing_bucket_id
+      DOCUMENTS_TABLE = aws_dynamodb_table.documents.name
+    }
+  }
 
-**Day -1** — 30 minutes (includes verification)
-
----
-
-## TICKET T0-04 — VPC Interface Endpoints (PrivateLink)
-
-### Goal
-
-Create all 7 PrivateLink interface endpoints and 2 Gateway endpoints so that Lambda, ECS, and Bedrock can reach AWS services without internet routing. This is the most critical security control: without these endpoints, nothing works inside the private subnets.
-
-### Endpoint Inventory
-
-| Endpoint | Type | Cost | Required by |
-|----------|------|------|-------------|
-| `s3` | Gateway | Free | All — S3 reads/writes |
-| `dynamodb` | Gateway | Free | Team 0 Lambda → DynamoDB |
-| `bedrock-runtime` | Interface | ~€7.50/mo/AZ | Team 0 sidecar Lambda → KB ingestion |
-| `bedrock-agent-runtime` | Interface | ~€7.50/mo/AZ | Team 1 shim Lambda → Agent invocation |
-| `textract` | Interface | ~€7.50/mo/AZ | Optional — OCR for scanned docs |
-| `ecr.api` | Interface | ~€7.50/mo/AZ | ECS Fargate → ECR image pull (auth) |
-| `ecr.dkr` | Interface | ~€7.50/mo/AZ | ECS Fargate → ECR image pull (layers) |
-| `logs` | Interface | ~€7.50/mo/AZ | Lambda + ECS → CloudWatch Logs |
-| `sts` | Interface | ~€7.50/mo/AZ | Lambda/ECS → IAM role assumption |
-
-> **Cost note:** Interface endpoints with 2 AZs: 9 endpoints × 2 AZs × ~€0.013/h ≈ **€4.50/day**. Budget accordingly for the 4-day hackathon (~€18 in endpoint costs).
-
-### Missing Endpoint for API Gateway
-
-The networking module does not yet include the `execute-api` endpoint needed by Team 0 for the private API Gateway. Add it:
-
-```hcl
-# Add to terraform/modules/networking/main.tf
-
-resource "aws_vpc_endpoint" "execute_api" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.region}.execute-api"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "${var.project_name}-execute-api-endpoint"
+  vpc_config {
+    subnet_ids         = local.private_subnet_ids
+    security_group_ids = [local.lambda_security_group_id]
   }
 }
-```
 
-Add to `modules/networking/outputs.tf`:
+resource "aws_cloudwatch_log_group" "presign_lambda" {
+  name              = "/aws/lambda/${aws_lambda_function.presign.function_name}"
+  retention_in_days = 7
+}
 
-```hcl
-# Update the endpoint_ids output map to include execute-api:
-output "endpoint_ids" {
-  description = "Map of VPC endpoint service names to their IDs"
-  value = {
-    s3                    = aws_vpc_endpoint.s3.id
-    dynamodb              = aws_vpc_endpoint.dynamodb.id
-    bedrock_runtime       = aws_vpc_endpoint.bedrock_runtime.id
-    bedrock_agent_runtime = aws_vpc_endpoint.bedrock_agent_runtime.id
-    textract              = aws_vpc_endpoint.textract.id
-    ecr_api               = aws_vpc_endpoint.ecr_api.id
-    ecr_dkr               = aws_vpc_endpoint.ecr_dkr.id
-    logs                  = aws_vpc_endpoint.logs.id
-    sts                   = aws_vpc_endpoint.sts.id
-    "execute-api"         = aws_vpc_endpoint.execute_api.id   # new
+# -------------------------------------------------------
+# API Gateway (REST, private — VPC endpoint only)
+# -------------------------------------------------------
+resource "aws_api_gateway_rest_api" "main" {
+  name        = "${var.project_name}-api"
+  description = "Internal document ingestion API"
+
+  endpoint_configuration {
+    types            = ["PRIVATE"]
+    vpc_endpoint_ids = [data.terraform_remote_state.shared.outputs.endpoint_ids["execute-api"]]
   }
 }
-```
 
-### SSM Endpoint (Optional — needed if secrets are stored in Parameter Store)
+# Resource: /upload-url
+resource "aws_api_gateway_resource" "upload_url" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  path_part   = "upload-url"
+}
 
-```hcl
-resource "aws_vpc_endpoint" "ssm" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.region}.ssm"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
+resource "aws_api_gateway_method" "upload_url_post" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.upload_url.id
+  http_method   = "POST"
+  authorization = "NONE"    # VPN enforces access; add Cognito authorizer as stretch goal
+}
 
-  tags = { Name = "${var.project_name}-ssm-endpoint" }
+resource "aws_api_gateway_integration" "upload_url_post" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.upload_url.id
+  http_method             = aws_api_gateway_method.upload_url_post.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.presign.invoke_arn
+}
+
+resource "aws_lambda_permission" "api_gw_presign" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.presign.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_deployment" "main" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.upload_url.id,
+      aws_api_gateway_method.upload_url_post.id,
+      aws_api_gateway_integration.upload_url_post.id,
+    ]))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_api_gateway_stage" "main" {
+  deployment_id = aws_api_gateway_deployment.main.id
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  stage_name    = var.environment
+}
+
+# Resource policy: allow calls only from within the VPC
+resource "aws_api_gateway_rest_api_policy" "vpce_only" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = "execute-api:Invoke"
+      Resource  = "${aws_api_gateway_rest_api.main.execution_arn}/*"
+      Condition = {
+        StringEquals = {
+          "aws:SourceVpc" = local.vpc_id
+        }
+      }
+    }]
+  })
 }
 ```
 
-Add `ssm = aws_vpc_endpoint.ssm.id` to the `endpoint_ids` output. Team 1 needs this for Open WebUI's `WEBUI_SECRET_KEY` SSM Parameter.
+Add outputs:
 
-### Verify DNS Resolution (from inside VPC)
-
-After apply, each endpoint's hostname must resolve to a **private IP** (10.x.x.x):
-
-```bash
-# Run this inside the verify-endpoints Lambda (T0-07) or on an EC2 in the VPC
-for svc in bedrock-runtime bedrock-agent-runtime textract api.ecr dkr.ecr logs sts execute-api ssm; do
-  host "${svc}.eu-central-1.amazonaws.com" | head -1
-done
-# Expected: all resolve to 10.0.x.x addresses (VPC private IPs)
+```hcl
+output "api_endpoint" {
+  description = "Internal API Gateway base URL"
+  value       = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${var.region}.amazonaws.com/${var.environment}"
+}
 ```
 
 ### Acceptance Criteria
 
-- [ ] `aws ec2 describe-vpc-endpoints --filters "Name=vpc-id,Values=<vpc-id>"` lists 11 endpoints (9 original + execute-api + ssm)
-- [ ] All Interface endpoints show `State: available`
-- [ ] Gateway endpoints (s3, dynamodb) appear in the private route table
-- [ ] `private_dns_enabled = true` on all interface endpoints — confirmed in describe output
-- [ ] DNS check: `bedrock-runtime.eu-central-1.amazonaws.com` resolves to a 10.x.x.x address from within VPC
-- [x] `execute-api` endpoint ID appears in `terraform output endpoint_ids` — needed by Team 0's private API Gateway
+- [x] `terraform apply` creates the Lambda, API Gateway, and IAM role
+- [ ] `aws lambda invoke --function-name knowledge-base-presign-url --payload '{"body":"{\"filename\":\"test.pdf\",\"industry\":\"Banking\",\"type\":\"PoC\"}"}' /tmp/out.json` returns `statusCode: 200`
+- [ ] The presigned URL in the response accepts a `curl -T test.pdf "<url>"` PUT request and the file appears in S3
+- [ ] DynamoDB shows a new item with `status: PENDING_UPLOAD` after calling the API
+- [ ] Calling with `"industry": "FakeIndustry"` returns `statusCode: 400`
+- [x] API Gateway endpoint is not reachable from outside the VPC (returns connection refused or timeout from public internet)
+- [ ] CloudWatch log group `/aws/lambda/knowledge-base-presign-url` receives logs on each invocation
 
 ### Effort Estimate
 
-**Day -1** — 20 minutes (endpoints are declarative, just apply)
+**Day 2 morning** — Lambda + IAM (~1.5h), API Gateway (~1h)
 
 ### Key Pitfalls
 
-- Interface endpoints provision ENIs in each subnet — if subnets don't exist yet, endpoint creation fails; always apply T0-03 first
-- `private_dns_enabled = true` requires the VPC to have `enableDnsSupport = true` and `enableDnsHostnames = true` — both set in T0-03
-- Gateway endpoints (S3, DynamoDB) are attached to route tables, not subnets; confirm the private route table ID is referenced correctly
-- The `execute-api` endpoint is needed for **private** API Gateway only; Team 0's API Gateway must be type `PRIVATE` and include this endpoint ID in its endpoint configuration
+- Private API Gateway requires a VPC endpoint for `execute-api` — this is pre-provisioned in shared infra; reference it via `data.terraform_remote_state.shared.outputs.endpoint_ids["execute-api"]`
+- The API Gateway resource policy (`aws_api_gateway_rest_api_policy`) is a **separate resource** from the API — without it, private APIs reject all calls
+- Always use `create_before_destroy = true` on the deployment to avoid downtime during redeployment
+- The presigned URL is generated with `s3:PutObject`, not `s3:GetObject` — the Lambda role only needs put permission on the landing bucket
 
 ---
 
-## TICKET T0-05 — Internal ALB Skeleton
+## TICKET M0-03 — Lambda Metadata Sidecar + S3 Event Trigger
 
 ### Goal
 
-Provision the internal Application Load Balancer with a default listener returning `503 Service not yet configured`. Team 1 will add listener rules and target groups on top of this skeleton; neither team touches the ALB resource itself.
+When a file lands in the S3 landing bucket, automatically: create a `.metadata.json` sidecar (matching the shared schema), copy both files to the processed bucket, update the DynamoDB document status, and kick off a Bedrock Knowledge Base sync job.
 
-### What's Already Written
+### S3 Key Convention
 
-[terraform/modules/networking/main.tf](../../terraform/modules/networking/main.tf) already provisions:
-- `aws_lb.internal` — internal=true, type=application, private subnets
-- `aws_lb_listener.http` — port 80, default fixed-response 503
-- `aws_security_group.alb` — inbound 443+80 from `10.0.0.0/8`, egress to VPC only
+```
+uploads/<document_id>/<filename>                    ← original upload
+uploads/<document_id>/<filename>.metadata.json      ← sidecar (created by this Lambda)
+```
 
-### Missing: HTTPS Listener
+The Bedrock KB data source is configured to read `*.metadata.json` files as metadata sidecars alongside their companion documents.
 
-The current setup only has an HTTP listener on port 80. The Cognito `authenticate-cognito` action (M1-01) **requires HTTPS**. Two options:
+### Lambda Implementation
 
-**Option A — HTTP only for the hackathon (fast, no cert needed):**
-Leave as-is. Team 1 adds listener rules to the port 80 listener. Cognito auth is skipped for Day 1–2, added on Day 3.
+Create `terraform/team0/lambda/sidecar/index.py`:
 
-**Option B — HTTPS with self-signed cert (recommended):**
+```python
+import boto3
+import json
+import os
+import urllib.parse
+from datetime import datetime, timezone
+
+s3          = boto3.client("s3")
+dynamodb    = boto3.resource("dynamodb")
+bedrock_agent = boto3.client("bedrock-agent")
+
+PROCESSED_BUCKET = os.environ["PROCESSED_BUCKET"]
+DOCUMENTS_TABLE  = os.environ["DOCUMENTS_TABLE"]
+BEDROCK_KB_ID    = os.environ["BEDROCK_KB_ID"]       # filled after M0-04
+BEDROCK_DS_ID    = os.environ["BEDROCK_DS_ID"]       # filled after M0-04
+
+def handler(event, context):
+    for record in event["Records"]:
+        bucket   = record["s3"]["bucket"]["name"]
+        raw_key  = record["s3"]["object"]["key"]
+        s3_key   = urllib.parse.unquote_plus(raw_key)
+
+        # Skip sidecar files to avoid infinite trigger loop
+        if s3_key.endswith(".metadata.json"):
+            print(f"Skipping sidecar: {s3_key}")
+            continue
+
+        print(f"Processing: s3://{bucket}/{s3_key}")
+        _process(bucket, s3_key)
+
+def _process(bucket, s3_key):
+    table = dynamodb.Table(DOCUMENTS_TABLE)
+
+    # Extract document_id from key: uploads/<document_id>/<filename>
+    parts       = s3_key.split("/")
+    document_id = parts[1] if len(parts) >= 3 else None
+
+    # Fetch metadata from DynamoDB
+    if document_id:
+        item = table.get_item(Key={"document_id": document_id}).get("Item", {})
+    else:
+        item = {}
+
+    # Build sidecar (Bedrock KB metadata format)
+    metadata = {
+        "metadataAttributes": {
+            "Industry":   item.get("industry", "Other"),
+            "Type":       item.get("type", "Other"),
+            "Project":    item.get("project", ""),
+            "Client":     item.get("client", ""),
+            "Topic":      item.get("topic", ""),
+            "UploadedBy": item.get("uploaded_by", ""),
+            "UploadedAt": item.get("uploaded_at", datetime.now(timezone.utc).isoformat())
+        }
+    }
+
+    sidecar_key = f"{s3_key}.metadata.json"
+
+    # Write sidecar to landing bucket (Bedrock KB syncs from landing or processed — configure one)
+    s3.put_object(
+        Bucket=bucket,
+        Key=sidecar_key,
+        Body=json.dumps(metadata, indent=2),
+        ContentType="application/json"
+    )
+
+    # Copy original + sidecar to processed bucket
+    s3.copy_object(
+        Bucket=PROCESSED_BUCKET,
+        CopySource={"Bucket": bucket, "Key": s3_key},
+        Key=s3_key
+    )
+    s3.copy_object(
+        Bucket=PROCESSED_BUCKET,
+        CopySource={"Bucket": bucket, "Key": sidecar_key},
+        Key=sidecar_key
+    )
+
+    # Update DynamoDB status
+    if document_id:
+        table.update_item(
+            Key={"document_id": document_id},
+            UpdateExpression="SET #s = :s, sidecar_key = :sk",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={
+                ":s": "SIDECAR_CREATED",
+                ":sk": sidecar_key
+            }
+        )
+
+    # Trigger Bedrock KB sync (StartIngestionJob)
+    if BEDROCK_KB_ID and BEDROCK_DS_ID:
+        try:
+            response = bedrock_agent.start_ingestion_job(
+                knowledgeBaseId=BEDROCK_KB_ID,
+                dataSourceId=BEDROCK_DS_ID
+            )
+            job_id = response["ingestionJob"]["ingestionJobId"]
+            print(f"Started ingestion job: {job_id}")
+
+            if document_id:
+                table.update_item(
+                    Key={"document_id": document_id},
+                    UpdateExpression="SET #s = :s, ingestion_job_id = :j",
+                    ExpressionAttributeNames={"#s": "status"},
+                    ExpressionAttributeValues={":s": "INDEXING", ":j": job_id}
+                )
+        except Exception as e:
+            print(f"Failed to start ingestion job: {e}")
+            # Non-fatal — KB can be synced manually if needed
+    else:
+        print("BEDROCK_KB_ID/DS_ID not set — skipping ingestion trigger")
+```
+
+### Terraform Resources
 
 ```hcl
-# Self-signed TLS certificate (acceptable for internal/hackathon use)
-resource "tls_private_key" "alb" {
-  algorithm = "RSA"
-  rsa_bits  = 2048
+# -------------------------------------------------------
+# IAM Role for sidecar Lambda
+# -------------------------------------------------------
+resource "aws_iam_role" "sidecar_lambda" {
+  name = "${var.project_name}-sidecar-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
 }
 
-resource "tls_self_signed_cert" "alb" {
-  private_key_pem = tls_private_key.alb.private_key_pem
+resource "aws_iam_role_policy" "sidecar_lambda" {
+  name = "sidecar-permissions"
+  role = aws_iam_role.sidecar_lambda.id
 
-  subject {
-    common_name  = data.terraform_remote_state.shared.outputs.alb_dns_name
-    organization = "Accenture BG Hackathon"
-  }
-
-  validity_period_hours = 168  # 7 days
-
-  allowed_uses = ["key_encipherment", "digital_signature", "server_auth"]
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject"]
+        Resource = ["${module.storage.landing_bucket_arn}/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = ["${module.storage.processed_bucket_arn}/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+        Resource = [aws_dynamodb_table.documents.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["bedrock:StartIngestionJob"]
+        Resource = "*"    # narrow to KB ARN after M0-04
+      },
+      {
+        Effect = "Allow"
+        Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
 }
 
-resource "aws_acm_certificate" "alb" {
-  private_key      = tls_private_key.alb.private_key_pem
-  certificate_body = tls_self_signed_cert.alb.cert_pem
+resource "aws_iam_role_policy_attachment" "sidecar_vpc" {
+  role       = aws_iam_role.sidecar_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
-resource "aws_lb_listener" "https" {
-  load_balancer_arn = aws_lb.internal.arn
-  port              = 443
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = aws_acm_certificate.alb.arn
+# -------------------------------------------------------
+# Lambda: metadata sidecar creator
+# -------------------------------------------------------
+data "archive_file" "sidecar_lambda" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda/sidecar"
+  output_path = "${path.module}/lambda/sidecar.zip"
+}
 
-  default_action {
-    type = "fixed-response"
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "Service not yet configured"
-      status_code  = "503"
+resource "aws_lambda_function" "sidecar" {
+  function_name    = "${var.project_name}-metadata-sidecar"
+  role             = aws_iam_role.sidecar_lambda.arn
+  runtime          = "python3.12"
+  handler          = "index.handler"
+  timeout          = 60
+  memory_size      = 256
+  filename         = data.archive_file.sidecar_lambda.output_path
+  source_code_hash = data.archive_file.sidecar_lambda.output_base64sha256
+
+  environment {
+    variables = {
+      PROCESSED_BUCKET = module.storage.processed_bucket_id
+      DOCUMENTS_TABLE  = aws_dynamodb_table.documents.name
+      BEDROCK_KB_ID    = ""    # fill in after M0-04; update via terraform apply
+      BEDROCK_DS_ID    = ""    # fill in after M0-04
     }
   }
-}
-```
 
-Add the `hashicorp/tls` provider to `shared/main.tf`:
-
-```hcl
-terraform {
-  required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
-    tls = { source = "hashicorp/tls", version = "~> 4.0" }
+  vpc_config {
+    subnet_ids         = local.private_subnet_ids
+    security_group_ids = [local.lambda_security_group_id]
   }
 }
-```
 
-Export the HTTPS listener ARN for Team 1:
+resource "aws_cloudwatch_log_group" "sidecar_lambda" {
+  name              = "/aws/lambda/${aws_lambda_function.sidecar.function_name}"
+  retention_in_days = 7
+}
 
-```hcl
-# In shared/outputs.tf — update alb_listener_arn to the HTTPS listener
-output "alb_listener_arn" {
-  description = "ARN of the HTTPS listener (Team 1 adds rules here)"
-  value       = aws_lb_listener.https.arn   # was http, now https
+# -------------------------------------------------------
+# S3 Event Notification → sidecar Lambda
+# -------------------------------------------------------
+resource "aws_lambda_permission" "s3_sidecar" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.sidecar.function_name
+  principal     = "s3.amazonaws.com"
+  source_arn    = module.storage.landing_bucket_arn
+}
+
+resource "aws_s3_bucket_notification" "landing_trigger" {
+  bucket = module.storage.landing_bucket_id
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.sidecar.arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "uploads/"
+    filter_suffix       = ""    # all file types; sidecar Lambda skips *.metadata.json
+  }
+
+  depends_on = [aws_lambda_permission.s3_sidecar]
 }
 ```
 
 ### Acceptance Criteria
 
-- [ ] `aws elbv2 describe-load-balancers --names knowledge-base-internal-alb` shows `State.Code: active` and `Scheme: internal`
-- [ ] `aws elbv2 describe-listeners --load-balancer-arn <arn>` shows listeners on port 80 (and 443 if Option B)
-- [ ] Hitting the ALB DNS name from within the VPC returns HTTP 503 (not connection refused)
-- [ ] ALB is in private subnets — confirm `Scheme: internal` and subnets are the private ones
-- [x] `terraform output alb_listener_arn` returns a non-empty ARN
-- [ ] `terraform output alb_dns_name` returns the ALB DNS name — share with Team 1 for Cognito callback URL
+- [ ] Upload a test PDF via the presigned URL; within 30 seconds a `.metadata.json` sidecar appears alongside it in the landing bucket
+- [ ] Both the original file and sidecar are copied to the processed bucket
+- [ ] DynamoDB item transitions: `PENDING_UPLOAD → SIDECAR_CREATED → INDEXING`
+- [ ] CloudWatch logs for the sidecar Lambda show no errors
+- [ ] Uploading a file directly (bypassing the presigned-URL API) still triggers the Lambda; sidecar is created with default `Other`/`Other` values (graceful degradation)
+- [x] Uploading a `.metadata.json` file directly does NOT trigger infinite recursion (Lambda skips sidecar files)
+- [ ] Once M0-04 is deployed, a Bedrock ingestion job starts automatically after each upload
 
 ### Effort Estimate
 
-**Day -1** — 15 minutes (already written; only add HTTPS listener if using Option B)
+**Day 2 afternoon** — Lambda code + S3 notification (~2h)
+**Day 3 morning** — wire `BEDROCK_KB_ID` after KB is created, end-to-end test
+
+### Key Pitfalls
+
+- The `aws_lambda_permission` with `principal = "s3.amazonaws.com"` must be applied **before** `aws_s3_bucket_notification`, or S3 cannot invoke the Lambda
+- Filter `filter_suffix = ""` means all object types trigger the notification; the Lambda must explicitly skip `.metadata.json` keys to avoid an infinite loop
+- The sidecar `metadataAttributes` key names must exactly match the schema in `docs/metadata-schema.md` — `Industry`, `Type`, etc. are case-sensitive; Bedrock KB rejects unknown keys silently
 
 ---
 
-## TICKET T0-06 — Bedrock Model Access + SES Production Access
+## TICKET M0-04 — Bedrock Knowledge Base + Titan V2 Embeddings
 
 ### Goal
 
-Manually enable the required Bedrock foundation models and request SES production access. Both are AWS Console operations that cannot be Terraformed and can take time to process — do them as early as possible.
+Create a Bedrock Knowledge Base backed by an S3 Vector Store. Configure Titan Text Embeddings V2 as the embedding model and the processed S3 bucket as the data source. This is the critical integration point: the `bedrock_kb_id` output is what Team 1 plugs into their agent.
 
-### Bedrock Model Access
+### Pre-Step: Enable Model Access
 
-Navigate to: **AWS Console → Amazon Bedrock → Model access → eu-central-1**
+Bedrock models require explicit opt-in:
 
-Enable these models (click "Manage model access"):
-
-| Model | Provider | Needed by | Notes |
-|-------|----------|-----------|-------|
-| Titan Text Embeddings V2 | Amazon | Team 0 (KB embeddings) | Usually instant |
-| Claude 3.5 Sonnet v2 | Anthropic | Team 1 (Agent + responses) | Requires Anthropic ToS acceptance |
-| Claude 3 Haiku | Anthropic | Optional fallback | Faster/cheaper |
+1. Open AWS Console → Amazon Bedrock → Model access (eu-central-1)
+2. Enable: **Amazon Titan Text Embeddings V2** + **Anthropic Claude 3.5 Sonnet**
+3. Wait for status to become **Access granted** (usually instant for Titan)
 
 ```bash
-# Verify after enabling:
+# Verify via CLI
 aws bedrock list-foundation-models --region eu-central-1 \
-  --query "modelSummaries[?contains(modelId, 'titan-embed') || contains(modelId, 'claude-3-5')].{id:modelId,status:modelLifecycle.status}"
+  --query "modelSummaries[?modelId=='amazon.titan-embed-text-v2:0'].{id:modelId,status:modelLifecycle.status}"
 ```
 
-Expected output:
-```json
-[
-  {"id": "amazon.titan-embed-text-v2:0", "status": "ACTIVE"},
-  {"id": "anthropic.claude-3-5-sonnet-20241022-v2:0", "status": "ACTIVE"}
-]
+### S3 Vector Store
+
+Bedrock S3 Vector Store requires a **dedicated bucket** separate from documents:
+
+```hcl
+# -------------------------------------------------------
+# S3 Vector Store Bucket (for embeddings)
+# -------------------------------------------------------
+resource "aws_s3_bucket" "vector_store" {
+  bucket_prefix = "${var.project_name}-vectors-"
+
+  tags = {
+    Name        = "${var.project_name}-vectors"
+    Environment = var.environment
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "vector_store" {
+  bucket = aws_s3_bucket.vector_store.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "aws:kms"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "vector_store" {
+  bucket                  = aws_s3_bucket.vector_store.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# Bedrock needs read/write on the vector store bucket
+resource "aws_s3_bucket_policy" "vector_store_bedrock" {
+  bucket = aws_s3_bucket.vector_store.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "bedrock.amazonaws.com" }
+      Action    = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
+      Resource  = [
+        aws_s3_bucket.vector_store.arn,
+        "${aws_s3_bucket.vector_store.arn}/*"
+      ]
+      Condition = {
+        StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+      }
+    }]
+  })
+}
 ```
 
-### SES: Move Out of Sandbox
+### Terraform Resources — Knowledge Base
 
-By default, new AWS accounts are in SES sandbox — only verified email addresses can be recipients. Two options:
+```hcl
+# -------------------------------------------------------
+# IAM Role for Bedrock Knowledge Base
+# -------------------------------------------------------
+resource "aws_iam_role" "bedrock_kb" {
+  name = "${var.project_name}-bedrock-kb-role"
 
-**Option A — Verify individual emails (fast, sandbox stays):**
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "bedrock.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+        }
+      }
+    }]
+  })
+}
 
-```bash
-# Verify each participant's email (they receive a verification link)
-aws ses verify-email-identity --email-address zoltan.szilagyi@accenture.com --region eu-central-1
-aws ses verify-email-identity --email-address aigul@accenture.com --region eu-central-1
-# Repeat for all participants
-```
+resource "aws_iam_role_policy" "bedrock_kb" {
+  name = "kb-permissions"
+  role = aws_iam_role.bedrock_kb.id
 
-**Option B — Request production access (takes 24h, do Day -2):**
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["bedrock:InvokeModel"]
+        Resource = "arn:aws:bedrock:${var.region}::foundation-model/amazon.titan-embed-text-v2:0"
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:ListBucket"]
+        Resource = [
+          module.storage.processed_bucket_arn,
+          "${module.storage.processed_bucket_arn}/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
+        Resource = [
+          aws_s3_bucket.vector_store.arn,
+          "${aws_s3_bucket.vector_store.arn}/*"
+        ]
+      }
+    ]
+  })
+}
 
-1. AWS Console → Amazon SES → Account dashboard → Request production access
-2. Mail type: Transactional
-3. Use case: Internal corporate notification system
-4. Expected volume: <100 emails/day
-5. Describe: Weekly knowledge base digest to internal Accenture team
+# -------------------------------------------------------
+# Bedrock Knowledge Base (S3 Vector Store)
+# -------------------------------------------------------
+resource "aws_bedrockagent_knowledge_base" "main" {
+  name     = "${var.project_name}-knowledge-base"
+  role_arn = aws_iam_role.bedrock_kb.arn
 
-```bash
-# Verify SES sending quota after production access granted:
-aws ses get-send-quota --region eu-central-1
-# Should show SendMaxPerSecond and Max24HourSend > 200 (sandbox = 200)
-```
+  knowledge_base_configuration {
+    type = "VECTOR"
+    vector_knowledge_base_configuration {
+      embedding_model_arn = "arn:aws:bedrock:${var.region}::foundation-model/amazon.titan-embed-text-v2:0"
+    }
+  }
 
-### Acceptance Criteria
+  storage_configuration {
+    type = "S3"
+    s3_configuration {
+      bucket_arn = aws_s3_bucket.vector_store.arn
+    }
+  }
 
-- [ ] `aws bedrock list-foundation-models` confirms `amazon.titan-embed-text-v2:0` is `ACTIVE`
-- [ ] `aws bedrock list-foundation-models` confirms `anthropic.claude-3-5-sonnet-20241022-v2:0` is `ACTIVE`
-- [ ] SES: `aws ses verify-email-identity` sent to all participants; each confirms the link
-- [ ] SES test: `aws ses send-email --from <sender> --to <recipient> --subject "test" --body "test"` succeeds (no MessageRejected error)
-- [ ] If using Anthropic models: Anthropic Terms of Service accepted in the Bedrock console
+  tags = { Name = "${var.project_name}-knowledge-base" }
+}
 
-### Effort Estimate
+# -------------------------------------------------------
+# Data Source: processed S3 bucket
+# -------------------------------------------------------
+resource "aws_bedrockagent_data_source" "processed" {
+  name             = "${var.project_name}-docs-source"
+  knowledge_base_id = aws_bedrockagent_knowledge_base.main.id
 
-**Day -2** — 30 minutes (models: instant; SES production request: submit and wait 24h)
+  data_source_configuration {
+    type = "S3"
+    s3_configuration {
+      bucket_arn          = module.storage.processed_bucket_arn
+      inclusion_prefixes  = ["uploads/"]
+    }
+  }
 
----
+  # Read .metadata.json sidecars as document metadata
+  vector_ingestion_configuration {
+    chunking_configuration {
+      chunking_strategy = "FIXED_SIZE"
+      fixed_size_chunking_configuration {
+        max_tokens         = 512
+        overlap_percentage = 20
+      }
+    }
 
-## TICKET T0-07 — Endpoint Verification + Day 1 Readiness
-
-### Goal
-
-Run the pre-built verification Lambda from inside the VPC to confirm all PrivateLink endpoints resolve to private IPs and all AWS service calls succeed. Fix any failures before participants arrive. Destroy verification resources after a clean pass.
-
-### What's Already Written
-
-[terraform/shared/verify-endpoints/](../../terraform/shared/verify-endpoints/) is a self-contained Terraform module that:
-- Deploys a Lambda function inside the private subnet
-- Tests STS, S3, DynamoDB, Bedrock, Textract, ECR, CloudWatch Logs via their respective endpoints
-- Performs DNS resolution checks for all interface endpoints
-- Returns a `all_endpoints_reachable: true/false` summary
-
-### Apply + Run + Destroy
-
-```bash
-cd terraform/shared/verify-endpoints
-
-terraform init
-terraform apply   # deploys verification Lambda (~30 seconds)
-
-# Invoke the Lambda and capture output
-aws lambda invoke \
-  --function-name knowledge-base-verify-endpoints \
-  --region eu-central-1 \
-  --log-type Tail \
-  --query 'LogResult' \
-  --output text \
-  /dev/stdout | base64 -d
-
-# Expected final line:
-# "all_endpoints_reachable": true
-
-# Clean up after a clean pass
-terraform destroy
-```
-
-### Interpreting Results
-
-```json
-{
-  "all_endpoints_reachable": true,
-  "region": "eu-central-1",
-  "results": {
-    "sts":               {"status": "OK", "detail": "Account: 064453091991, Role: ..."},
-    "s3":                {"status": "OK", "detail": "Found 3 buckets"},
-    "dynamodb":          {"status": "OK", "detail": "Found 1 tables"},
-    "bedrock_runtime":   {"status": "OK", "detail": "Found 42 text models"},
-    "textract":          {"status": "OK", "detail": "Endpoint reachable (expected validation error)"},
-    "ecr":               {"status": "OK", "detail": "Endpoint reachable (no repos yet)"},
-    "cloudwatch_logs":   {"status": "OK", "detail": "Endpoint reachable, found 1 log groups"},
-    "dns_resolution": {
-      "bedrock-runtime":       {"status": "OK", "ip": "10.0.10.5",  "private": true},
-      "bedrock-agent-runtime": {"status": "OK", "ip": "10.0.11.8",  "private": true},
-      "ecr.api":               {"status": "OK", "ip": "10.0.10.12", "private": true},
-      "ecr.dkr":               {"status": "OK", "ip": "10.0.11.3",  "private": true},
-      "logs":                  {"status": "OK", "ip": "10.0.10.9",  "private": true},
-      "sts":                   {"status": "OK", "ip": "10.0.11.14", "private": true},
-      "textract":              {"status": "OK", "ip": "10.0.10.7",  "private": true}
+    # Tell Bedrock to look for <filename>.metadata.json alongside each file
+    custom_transformation_configuration {
+      # Inline metadata — Bedrock KB reads sidecar automatically if bucket_owner_full_control is set
+      # No additional config needed when sidecars follow the <key>.metadata.json convention
     }
   }
 }
 ```
 
-**Any `"status": "FAIL"`** or DNS resolving to a public IP must be fixed before Day 1.
+### Wiring Back to M0-03
 
-### Common Failures and Fixes
+After `terraform apply` succeeds for M0-04, update the sidecar Lambda environment variables:
 
-| Failure | Likely cause | Fix |
-|---------|-------------|-----|
-| `sts: FAIL — Connection timeout` | STS endpoint missing or SG blocks 443 | Apply T0-04; check VPC endpoints SG allows inbound 443 from `10.0.0.0/16` |
-| `bedrock_runtime: FAIL — not authorized` | Bedrock model access not enabled | Complete T0-06 model access |
-| DNS resolves to `52.x.x.x` (public IP) | `private_dns_enabled = false` on endpoint | Set to `true` and re-apply |
-| `ecr: FAIL — Connection timeout` | Missing `ecr.api` or `ecr.dkr` endpoint | Both must be present; apply T0-04 |
-| Lambda fails to start | Lambda SG has no egress to VPC endpoints | Check lambda SG allows egress 443 to VPC CIDR |
-| `textract: FAIL — not authorized` | Textract model access | Enable in Bedrock console (or IAM) |
-
-### Day 1 Readiness Checklist
-
-Run this checklist at **08:30 on Day 1** (30 min before kickoff):
-
+```hcl
+# In aws_lambda_function.sidecar environment block:
+BEDROCK_KB_ID = aws_bedrockagent_knowledge_base.main.id
+BEDROCK_DS_ID = aws_bedrockagent_data_source.processed.data_source_id
 ```
-PRE-HACKATHON CHECKS
-====================
 
-Infrastructure
-  [ ] terraform/backend      — applied, state bucket exists
-  [ ] terraform/shared       — applied, networking + endpoints + ALB all green
-  [ ] verify-endpoints       — Lambda ran clean, all_endpoints_reachable: true
-  [ ] verify-endpoints       — terraform destroy completed (save cost)
+### Critical Outputs (consumed by Team 1)
 
-Access
-  [ ] All 6 participants have working AWS CLI profiles (aws sts get-caller-identity passes)
-  [ ] GitHub repo accessible to all participants (clone + push permissions verified)
-  [x] team0/ directory: terraform init succeeds for Team 0 member
-  [x] team1/ directory: terraform init succeeds for Team 1 member
+```hcl
+output "bedrock_kb_id" {
+  description = "Bedrock Knowledge Base ID — Team 1 plugs this into their Agent"
+  value       = aws_bedrockagent_knowledge_base.main.id
+}
 
-Bedrock
-  [ ] amazon.titan-embed-text-v2:0 — ACTIVE in eu-central-1
-  [ ] anthropic.claude-3-5-sonnet-20241022-v2:0 — ACTIVE in eu-central-1
+output "bedrock_kb_arn" {
+  description = "Bedrock Knowledge Base ARN"
+  value       = aws_bedrockagent_knowledge_base.main.arn
+}
 
-SES
-  [ ] Sender email verified
-  [ ] At least one recipient email verified (or production access granted)
+output "s3_vector_store_arn" {
+  description = "S3 Vector Store bucket ARN"
+  value       = aws_s3_bucket.vector_store.arn
+}
 
-Shared Outputs (paste these into the kickoff Slack channel)
-  [ ] vpc_id:              vpc-xxxxxxxxxxxxxxxxx
-  [ ] private_subnet_ids: ["subnet-xxxx", "subnet-yyyy"]
-  [ ] alb_dns_name:       knowledge-base-internal-alb-xxxxxxxxx.eu-central-1.elb.amazonaws.com
-  [ ] alb_listener_arn:   arn:aws:elasticloadbalancing:...
+output "landing_bucket_name" {
+  description = "Landing bucket name (for presigned URL generation and Team 1 citation links)"
+  value       = module.storage.landing_bucket_id
+}
 
-Cost Estimate (4-day hackathon)
-  [ ] Interface VPC endpoints: ~€18 (9 endpoints × 2 AZs × 4 days)
-  [ ] NAT Gateway: €0 (disabled)
-  [ ] ALB: ~€2/day
-  [ ] Bedrock: pay-per-use (estimate €5–15 for hackathon traffic)
-  [ ] ECS Fargate (Team 1): ~€1/day for 1 vCPU task
-  [ ] Total estimate: ~€50–80 for the full hackathon
+output "bedrock_data_source_id" {
+  description = "Bedrock KB data source ID (for manual sync trigger)"
+  value       = aws_bedrockagent_data_source.processed.data_source_id
+}
 ```
 
 ### Acceptance Criteria
 
-- [ ] Verify-endpoints Lambda returns `"all_endpoints_reachable": true`
-- [ ] All DNS checks show `"private": true` (IPs in `10.x.x.x` range)
-- [ ] Verification Lambda and its resources are **destroyed** after a clean pass
-- [ ] Day 1 readiness checklist is fully green at 08:30
-- [ ] Shared output values posted to the team communication channel before kickoff
+- [x] `terraform apply` creates KB, data source, vector store bucket, and all IAM roles
+- [ ] `aws bedrock-agent get-knowledge-base --knowledge-base-id <id>` shows `status: ACTIVE`
+- [ ] Upload a test PDF through the presigned URL flow → sidecar is created → ingestion job starts
+- [ ] `aws bedrock-agent get-ingestion-job --knowledge-base-id <id> --data-source-id <ds> --ingestion-job-id <job>` shows `status: COMPLETE`
+- [ ] Test retrieval: `aws bedrock-agent-runtime retrieve --knowledge-base-id <id> --retrieval-query '{"text":"test query"}' --retrieval-configuration '{"vectorSearchConfiguration":{"numberOfResults":3}}'` returns results
+- [ ] Metadata-filtered retrieval works: add `filter: {"equals":{"key":"Industry","value":"Banking"}}` to the retrieve call — only Banking documents come back
+- [x] `bedrock_kb_id` output is visible in Terraform state and can be read by Team 1 via `terraform_remote_state`
 
 ### Effort Estimate
 
-**Day -1 evening** — Apply T0-03 through T0-05, run verification, fix issues (1–2 hours total)
-**Day 1 morning 08:30** — Final readiness check (15 minutes)
+**Day 2 afternoon** — KB + data source Terraform (~1.5h)
+**Day 3 morning** — ingest 3–5 test docs, verify metadata filtering works
+
+### Key Pitfalls
+
+- Bedrock KB creation can take 2–3 minutes — `terraform apply` will wait; don't cancel it
+- The IAM role for the KB must use a trust policy with `aws:SourceAccount` condition, or Bedrock will reject it
+- `inclusion_prefixes` must match the S3 key prefix where documents are stored — if empty, Bedrock scans the entire bucket including sidecars
+- Sidecar format for Bedrock: the file must be at `<document_key>.metadata.json` and contain `{"metadataAttributes": {...}}` — not a flat JSON; wrong structure causes silent metadata loss
+- `FIXED_SIZE` chunking with 512 tokens / 20% overlap is a sensible default for PDF slides and reports; reduce to 256 tokens for dense technical docs
+- S3 Vectors is a newer feature — ensure the account has it enabled in `eu-central-1` before plan/apply
 
 ---
 
-## Full Apply Sequence (Copy-Paste)
+## TICKET M0-05 — EventBridge + SES Weekly Digest + CloudWatch
 
-Run this on Day -1. Each step must succeed before the next:
+### Goal
 
-```bash
-# Step 1 — State backend (run once; local state)
-cd terraform/backend
-terraform init && terraform apply -auto-approve
+Send an automated weekly email digest to the team listing how many documents were indexed per Industry and Type, and alert on Lambda errors and API latency breaches. All triggered by EventBridge; no manual intervention needed.
 
-# Step 2 — Shared networking + endpoints + ALB
-cd ../shared
-terraform init
-terraform plan   # review ~35 resources
-terraform apply
+### Weekly Digest Email Format
 
-# Step 3 — Endpoint verification
-cd verify-endpoints
-terraform init && terraform apply -auto-approve
-aws lambda invoke \
-  --function-name knowledge-base-verify-endpoints \
-  --region eu-central-1 \
-  response.json && cat response.json | python3 -m json.tool | grep all_endpoints
+```
+Subject: [AABG Knowledge Base] Weekly Digest — 2026-07-28
 
-# If all_endpoints_reachable == true:
-terraform destroy -auto-approve
-cd ../..
+Documents indexed this week: 12
 
-echo "Shared infrastructure ready. Participants can now run terraform init in team0/ and team1/"
+By Industry:
+  Banking:     5
+  Healthcare:  3
+  Automotive:  4
+
+By Type:
+  PoC:         6
+  Case Study:  4
+  Proposal:    2
+
+Recent uploads (last 7 days):
+  - accenture-banking-poc-2025.pdf  (Banking / PoC, uploaded by z.szilagyi)
+  - titan-architecture-v3.pptx      (Technology / Architecture, uploaded by aigul)
+  ...
+
+Knowledge Base status:
+  Total documents indexed: 47
+  Last sync: 2026-07-27 14:30 UTC
+  Vector store size: 47 vectors
+
+---
+Sent automatically by the AABG Knowledge Platform.
 ```
 
+### Lambda Implementation
+
+Create `terraform/team0/lambda/digest/index.py`:
+
+```python
+import boto3
+import json
+import os
+from datetime import datetime, timezone, timedelta
+from collections import defaultdict
+
+dynamodb = boto3.resource("dynamodb")
+ses      = boto3.client("ses", region_name=os.environ["AWS_REGION"])
+bedrock_agent = boto3.client("bedrock-agent")
+
+DOCUMENTS_TABLE  = os.environ["DOCUMENTS_TABLE"]
+DIGEST_RECIPIENT = os.environ["DIGEST_RECIPIENT"]
+DIGEST_SENDER    = os.environ["DIGEST_SENDER"]
+BEDROCK_KB_ID    = os.environ["BEDROCK_KB_ID"]
+
+def handler(event, context):
+    table     = dynamodb.Table(DOCUMENTS_TABLE)
+    one_week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+    # Full scan for aggregate stats (small table — fine for hackathon)
+    response = table.scan(
+        FilterExpression="attribute_exists(document_id)"
+    )
+    all_docs = response.get("Items", [])
+
+    recent_docs = [d for d in all_docs if d.get("uploaded_at", "") >= one_week_ago]
+
+    by_industry = defaultdict(int)
+    by_type     = defaultdict(int)
+    for doc in all_docs:
+        by_industry[doc.get("industry", "Other")] += 1
+        by_type[doc.get("type", "Other")]         += 1
+
+    # Get KB stats
+    try:
+        kb_info = bedrock_agent.get_knowledge_base(knowledgeBaseId=BEDROCK_KB_ID)
+        kb_status = kb_info["knowledgeBase"]["status"]
+    except Exception:
+        kb_status = "UNKNOWN"
+
+    body = _build_email(
+        recent_docs=recent_docs,
+        by_industry=by_industry,
+        by_type=by_type,
+        total=len(all_docs),
+        kb_status=kb_status
+    )
+
+    ses.send_email(
+        Source=DIGEST_SENDER,
+        Destination={"ToAddresses": [DIGEST_RECIPIENT]},
+        Message={
+            "Subject": {"Data": f"[AABG Knowledge Base] Weekly Digest — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"},
+            "Body":    {"Text": {"Data": body}}
+        }
+    )
+    print(f"Digest sent to {DIGEST_RECIPIENT}")
+
+def _build_email(recent_docs, by_industry, by_type, total, kb_status):
+    lines = [
+        f"Documents indexed this week: {len(recent_docs)}",
+        "",
+        "By Industry:"
+    ]
+    for industry, count in sorted(by_industry.items(), key=lambda x: -x[1]):
+        lines.append(f"  {industry:<16} {count}")
+    lines += ["", "By Type:"]
+    for t, count in sorted(by_type.items(), key=lambda x: -x[1]):
+        lines.append(f"  {t:<16} {count}")
+    lines += ["", f"Recent uploads (last 7 days):"]
+    for doc in sorted(recent_docs, key=lambda d: d.get("uploaded_at",""), reverse=True)[:10]:
+        lines.append(f"  - {doc['filename']}  ({doc.get('industry','?')} / {doc.get('type','?')}, "
+                     f"uploaded by {doc.get('uploaded_by','unknown')})")
+    lines += [
+        "",
+        "Knowledge Base status:",
+        f"  Total documents indexed: {total}",
+        f"  KB status: {kb_status}",
+        "",
+        "---",
+        "Sent automatically by the AABG Knowledge Platform."
+    ]
+    return "\n".join(lines)
+```
+
+### Terraform Resources
+
+```hcl
+# -------------------------------------------------------
+# SES Email Identity (verify sender address)
+# -------------------------------------------------------
+resource "aws_ses_email_identity" "digest_sender" {
+  email = var.digest_sender_email    # e.g. zoltan.szilagyi@accenture.com
+}
+
+# -------------------------------------------------------
+# IAM Role for digest Lambda
+# -------------------------------------------------------
+resource "aws_iam_role" "digest_lambda" {
+  name = "${var.project_name}-digest-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "digest_lambda" {
+  name = "digest-permissions"
+  role = aws_iam_role.digest_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Scan", "dynamodb:Query"]
+        Resource = [aws_dynamodb_table.documents.arn, "${aws_dynamodb_table.documents.arn}/index/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ses:SendEmail"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["bedrock:GetKnowledgeBase"]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+data "archive_file" "digest_lambda" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda/digest"
+  output_path = "${path.module}/lambda/digest.zip"
+}
+
+resource "aws_lambda_function" "digest" {
+  function_name    = "${var.project_name}-weekly-digest"
+  role             = aws_iam_role.digest_lambda.arn
+  runtime          = "python3.12"
+  handler          = "index.handler"
+  timeout          = 60
+  memory_size      = 256
+  filename         = data.archive_file.digest_lambda.output_path
+  source_code_hash = data.archive_file.digest_lambda.output_base64sha256
+
+  environment {
+    variables = {
+      DOCUMENTS_TABLE  = aws_dynamodb_table.documents.name
+      DIGEST_RECIPIENT = var.digest_recipient_email
+      DIGEST_SENDER    = var.digest_sender_email
+      BEDROCK_KB_ID    = ""    # fill after M0-04
+    }
+  }
+  # Digest Lambda queries DynamoDB via VPC Gateway Endpoint — no VPC config needed
+  # unless SES is not accessible from inside VPC (use NAT GW or VPC endpoint for SES)
+}
+
+resource "aws_cloudwatch_log_group" "digest_lambda" {
+  name              = "/aws/lambda/${aws_lambda_function.digest.function_name}"
+  retention_in_days = 14
+}
+
+# -------------------------------------------------------
+# EventBridge: weekly schedule (Monday 08:00 UTC)
+# -------------------------------------------------------
+resource "aws_cloudwatch_event_rule" "weekly_digest" {
+  name                = "${var.project_name}-weekly-digest"
+  description         = "Trigger weekly knowledge base digest email"
+  schedule_expression = "cron(0 8 ? * MON *)"
+}
+
+resource "aws_cloudwatch_event_target" "digest_lambda" {
+  rule      = aws_cloudwatch_event_rule.weekly_digest.name
+  target_id = "DigestLambda"
+  arn       = aws_lambda_function.digest.arn
+}
+
+resource "aws_lambda_permission" "eventbridge_digest" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.digest.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.weekly_digest.arn
+}
+
+# -------------------------------------------------------
+# CloudWatch Alarms
+# -------------------------------------------------------
+resource "aws_cloudwatch_metric_alarm" "presign_lambda_errors" {
+  alarm_name          = "${var.project_name}-presign-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Presigned URL Lambda is throwing errors"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = aws_lambda_function.presign.function_name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "sidecar_lambda_errors" {
+  alarm_name          = "${var.project_name}-sidecar-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Metadata sidecar Lambda is throwing errors"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = aws_lambda_function.sidecar.function_name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_latency" {
+  alarm_name          = "${var.project_name}-api-latency"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "Latency"
+  namespace           = "AWS/ApiGateway"
+  period              = 60
+  statistic           = "p99"
+  threshold           = 3000    # 3 seconds
+  alarm_description   = "API Gateway p99 latency exceeds 3s"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ApiName = aws_api_gateway_rest_api.main.name
+    Stage   = aws_api_gateway_stage.main.stage_name
+  }
+}
+
+# -------------------------------------------------------
+# CloudWatch Dashboard
+# -------------------------------------------------------
+resource "aws_cloudwatch_dashboard" "main" {
+  dashboard_name = "${var.project_name}-team0"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type = "metric"
+        properties = {
+          title  = "Lambda Invocations & Errors"
+          period = 300
+          stat   = "Sum"
+          metrics = [
+            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.presign.function_name],
+            ["AWS/Lambda", "Errors",      "FunctionName", aws_lambda_function.presign.function_name],
+            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.sidecar.function_name],
+            ["AWS/Lambda", "Errors",      "FunctionName", aws_lambda_function.sidecar.function_name]
+          ]
+        }
+      },
+      {
+        type = "metric"
+        properties = {
+          title   = "API Gateway Latency (p99)"
+          period  = 300
+          stat    = "p99"
+          metrics = [
+            ["AWS/ApiGateway", "Latency", "ApiName", aws_api_gateway_rest_api.main.name, "Stage", var.environment]
+          ]
+        }
+      },
+      {
+        type = "metric"
+        properties = {
+          title   = "S3 Landing Bucket — Objects"
+          period  = 86400
+          stat    = "Average"
+          metrics = [
+            ["AWS/S3", "NumberOfObjects", "BucketName", module.storage.landing_bucket_id, "StorageType", "AllStorageTypes"]
+          ]
+        }
+      }
+    ]
+  })
+}
+```
+
+Add variables:
+
+```hcl
+variable "digest_sender_email" {
+  description = "SES-verified sender address for the weekly digest"
+  type        = string
+  default     = "zoltan.szilagyi@accenture.com"
+}
+
+variable "digest_recipient_email" {
+  description = "Email address to receive the weekly digest"
+  type        = string
+  default     = "zoltan.szilagyi@accenture.com"
+}
+```
+
+### Acceptance Criteria
+
+- [ ] SES email identity is verified — check spam/inbox for the AWS confirmation email and click the link
+- [ ] `aws events put-events` or a manual Lambda test invocation sends the digest email successfully
+- [ ] Email arrives with correct subject and body (document counts per Industry/Type)
+- [ ] EventBridge rule shows next scheduled fire time in the console
+- [x] CloudWatch dashboard `knowledge-base-team0` loads and shows Lambda invocation metrics
+- [ ] Triggering 1+ Lambda errors causes the `knowledge-base-presign-errors` alarm to enter `ALARM` state within 1 minute
+
+### Effort Estimate
+
+**Day 3 afternoon** — Lambda + EventBridge + SES (~2h), CloudWatch alarms (~30min)
+
+### Key Pitfalls
+
+- SES in a new account is in **sandbox mode** — you can only send to verified email addresses. Both the sender AND recipient must be SES-verified during the hackathon. Request production access if needed (takes ~24h — do this Day 1)
+- The digest Lambda does a full DynamoDB `Scan` — acceptable for the hackathon (small table), but add a note that this should become a GSI query for production
+- EventBridge `cron` syntax is AWS-specific: `cron(0 8 ? * MON *)` — note the `?` in the day-of-month position (required when day-of-week is specified)
+- The digest Lambda does not need to be inside the VPC (it accesses DynamoDB via Gateway endpoint and SES via the internet); omit `vpc_config` to avoid needing the VPC endpoint policy for SES
+
 ---
 
-## What Team 0 Does NOT Do
+## Team 0 → Team 1 Handoff Checklist
 
-- Does not create Team 0 or Team 1 application resources (S3, Lambda, Bedrock KB, Cognito, ECS)
-- Does not push any Docker images to ECR
-- Does not configure Bedrock Knowledge Bases (Team 0 owns that)
-- Does not deploy the ALB listener rules (Team 1 owns those)
-- Does not write the metadata schema — that is agreed by all teams at Day 1 kickoff
+Run this before Day 3 afternoon so Team 1 can finish their Bedrock Agent:
+
+| Item | Command to verify | Status |
+|------|------------------|--------|
+| `bedrock_kb_id` output in state | `terraform output bedrock_kb_id` | |
+| At least 3 docs indexed | `aws bedrock-agent-runtime retrieve --knowledge-base-id <id> --retrieval-query '{"text":"test"}'` returns results | |
+| Metadata filter works | Add `filter: {"equals":{"key":"Industry","value":"Banking"}}` — only Banking docs returned | |
+| `landing_bucket_name` output | `terraform output landing_bucket_name` | |
+| S3 GetObject allowed for shim Lambda role | Confirm shim role ARN in landing bucket policy | |
+| Metadata schema keys match exactly | `Industry`, `Type`, `Project`, `Client`, `Topic` — case-sensitive | |

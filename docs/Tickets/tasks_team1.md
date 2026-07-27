@@ -1,1423 +1,630 @@
-# M0 — Foundation & Ingestion: Detailed Ticket Specifications
+# M1 — Access & Knowledge App: Detailed Ticket Specifications
 
-> **Milestone owner:** Team 0 (Aigul, Sandro)
-> **Definition of done:** A document can be uploaded, tagged, vectorized, and retrieved with metadata filters.
-> **State file:** `team0/terraform.tfstate` — backend bucket `hackathon-tf-state-064453091991`, region `eu-central-1`
-> **Critical outputs for Team 1:** `bedrock_kb_id`, `bedrock_kb_arn`, `s3_vector_store_arn`, `landing_bucket_name`
+> **Milestone owner:** Team 1 (Zoltan, Nikos, Yildrim, Nicolas)
+> **Definition of done:** A user logs in via SSO, asks a question, and gets a cited answer from the KB.
+> **State file:** `team1/terraform.tfstate` — backend bucket `hackathon-tf-state-064453091991`, region `eu-central-1`
+> **Critical inputs from Team 0:** `bedrock_kb_id`, `bedrock_kb_arn` (read via `terraform_remote_state.team0`)
 
 ---
 
-## What's Already Done (Storage Module — Day 1 Complete)
+## What's Already Done (Compute Module — Day 1 Complete)
 
-The `modules/storage` module already provisions:
+The `modules/compute` module already provisions:
 
 | Resource | Name pattern | Status |
 |----------|-------------|--------|
-| S3 landing bucket | `knowledge-base-landing-<random>` | Done — KMS encrypted, versioned, public-access blocked |
-| S3 processed bucket | `knowledge-base-processed-<random>` | Done — KMS encrypted, versioned, public-access blocked |
-| DynamoDB sessions table | `knowledge-base-sessions` | Done — PAY_PER_REQUEST, TTL on `expires_at` |
-| DynamoDB feedback table | `knowledge-base-feedback` | Done — hash: `feedback_id`, range: `timestamp` |
+| ECR repository | `knowledge-base-chat-frontend` | Done — image scanning enabled |
+| ECS cluster | `knowledge-base-cluster` | Done — Container Insights enabled |
+| ECS task execution IAM role | `platform-knowledge-base-ecs-task-execution` | Done — AmazonECSTaskExecutionRolePolicy attached |
+| CloudWatch log group | `/ecs/knowledge-base-chat-frontend` | Done — 14-day retention |
 
 **Remaining work is organized into five tickets below.**
 
 ---
 
-## TICKET M0-01 — DynamoDB Documents Table + S3 Bucket Policy
+## TICKET M1-01 — Cognito User Pool + Microsoft Entra ID SSO Federation
 
 ### Goal
 
-Add a **documents catalog table** in DynamoDB to track upload state and metadata for every file. Also attach bucket policies so Bedrock Knowledge Base can read from the processed bucket (required for M0-04).
+Provision a Cognito User Pool that delegates authentication entirely to Microsoft Entra ID (Azure AD) via OIDC. All six hackathon participants log in with their Accenture `@accenture.com` credentials — no separate password to manage. The ALB will use Cognito as the authentication gatekeeper before forwarding requests to Open WebUI.
 
-### Why a Separate Document Table
+### Prerequisites (Azure Portal — done by Zoltan or Nikos)
 
-The existing `sessions` and `feedback` tables serve different purposes. We need a queryable index of every uploaded document so the digest Lambda (M0-05) can report statistics per Industry/Type, and so the sidecar Lambda (M0-03) can look up metadata by document ID.
+1. In Entra ID → App Registrations → **New registration**
+   - Name: `knowledge-base-hackathon`
+   - Redirect URI type: **Web**, value: `https://<cognito-domain>.auth.eu-central-1.amazoncognito.com/oauth2/idpresponse`
+2. Note the **Tenant ID** and **Client ID** from the app's Overview page
+3. Under Certificates & secrets → New client secret → note the **Client Secret value** (visible once only)
+4. Under API permissions → add `openid`, `email`, `profile` (Microsoft Graph delegated)
 
 ### Terraform Resources
 
-Add to `terraform/modules/storage/main.tf` (or directly to `terraform/team0/main.tf`):
-
 ```hcl
-# -------------------------------------------------------
-# DynamoDB: Document Catalog
-# Tracks every upload: state, metadata, S3 location
-# -------------------------------------------------------
-resource "aws_dynamodb_table" "documents" {
-  name         = "${var.project_name}-documents"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "document_id"
+# Cognito User Pool — SSO authentication front door
+resource "aws_cognito_user_pool" "main" {
+  name = "${var.project_name}-users"
 
-  attribute {
-    name = "document_id"
-    type = "S"
+  admin_create_user_config {
+    allow_admin_create_user_only = true  # users come exclusively via Entra ID SSO
   }
 
-  # GSI: query documents by Industry
-  attribute {
-    name = "industry"
-    type = "S"
+  password_policy {
+    minimum_length                   = 12
+    require_lowercase                = true
+    require_numbers                  = true
+    require_symbols                  = true
+    require_uppercase                = true
+    temporary_password_validity_days = 1
   }
 
-  # GSI: query documents by upload timestamp
-  attribute {
-    name = "uploaded_at"
-    type = "S"
+  auto_verified_attributes = ["email"]
+  username_attributes      = ["email"]
+
+  schema {
+    attribute_data_type      = "String"
+    name                     = "email"
+    required                 = true
+    mutable                  = true
+    developer_only_attribute = false
+    string_attribute_constraints { min_length = 3, max_length = 254 }
+  }
+}
+
+# Cognito hosted-UI domain — used by ALB authenticator redirect
+resource "aws_cognito_user_pool_domain" "main" {
+  domain       = "${var.project_name}-${data.aws_caller_identity.current.account_id}"
+  user_pool_id = aws_cognito_user_pool.main.id
+}
+
+# Microsoft Entra ID OIDC identity provider
+resource "aws_cognito_identity_provider" "entra" {
+  user_pool_id  = aws_cognito_user_pool.main.id
+  provider_name = "EntraID"
+  provider_type = "OIDC"
+
+  provider_details = {
+    client_id                 = var.entra_client_id
+    client_secret             = var.entra_client_secret
+    attributes_request_method = "GET"
+    oidc_issuer               = "https://login.microsoftonline.com/${var.entra_tenant_id}/v2.0"
+    authorize_scopes          = "openid email profile"
+    authorize_url             = "https://login.microsoftonline.com/${var.entra_tenant_id}/oauth2/v2.0/authorize"
+    token_url                 = "https://login.microsoftonline.com/${var.entra_tenant_id}/oauth2/v2.0/token"
+    attributes_url            = "https://graph.microsoft.com/oidc/userinfo"
+    jwks_uri                  = "https://login.microsoftonline.com/${var.entra_tenant_id}/discovery/v2.0/keys"
   }
 
-  global_secondary_index {
-    name            = "industry-uploaded_at-index"
-    hash_key        = "industry"
-    range_key       = "uploaded_at"
-    projection_type = "ALL"
+  attribute_mapping = {
+    email    = "email"
+    username = "sub"
+    name     = "name"
   }
+}
 
-  ttl {
-    attribute_name = "expires_at"
-    enabled        = true
-  }
+# Cognito App Client — used by the ALB listener rule authenticator
+resource "aws_cognito_user_pool_client" "open_webui" {
+  name         = "open-webui-alb"
+  user_pool_id = aws_cognito_user_pool.main.id
 
-  tags = {
-    Name        = "${var.project_name}-documents"
-    Environment = var.environment
-  }
+  generate_secret                      = true
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_scopes                 = ["email", "openid", "profile"]
+
+  callback_urls = ["https://${local.alb_dns_name}/oauth2/idpresponse"]
+  logout_urls   = ["https://${local.alb_dns_name}"]
+
+  supported_identity_providers = ["EntraID"]
+  depends_on                   = [aws_cognito_identity_provider.entra]
 }
 ```
 
-DynamoDB item schema (for reference — enforced by Lambda, not DynamoDB):
-
-```json
-{
-  "document_id":  "uuid-v4",
-  "filename":     "accenture-banking-poc-2025.pdf",
-  "s3_key":       "uploads/uuid-v4/accenture-banking-poc-2025.pdf",
-  "industry":     "Banking",
-  "type":         "PoC",
-  "project":      "Titan",
-  "client":       "",
-  "topic":        "Engineering",
-  "uploaded_by":  "zoltan.szilagyi@accenture.com",
-  "uploaded_at":  "2026-07-28T09:00:00Z",
-  "status":       "UPLOADED | SIDECAR_CREATED | INDEXED | FAILED",
-  "sidecar_key":  "uploads/uuid-v4/accenture-banking-poc-2025.pdf.metadata.json"
-}
-```
-
-S3 bucket policy for Bedrock KB access (add to `terraform/team0/main.tf`):
+Variables to set in `terraform.tfvars` (never commit these — use AWS Secrets Manager or environment variables in CI):
 
 ```hcl
-# Allow Bedrock Knowledge Base service to read the processed bucket
-data "aws_iam_policy_document" "bedrock_kb_s3" {
-  statement {
-    sid     = "BedrockKBRead"
-    effect  = "Allow"
-    principals {
-      type        = "Service"
-      identifiers = ["bedrock.amazonaws.com"]
-    }
-    actions   = ["s3:GetObject", "s3:ListBucket"]
-    resources = [
-      module.storage.processed_bucket_arn,
-      "${module.storage.processed_bucket_arn}/*"
-    ]
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [data.aws_caller_identity.current.account_id]
-    }
-  }
-}
-
-resource "aws_s3_bucket_policy" "processed_bedrock" {
-  bucket = module.storage.processed_bucket_id
-  policy = data.aws_iam_policy_document.bedrock_kb_s3.json
-}
-
-data "aws_caller_identity" "current" {}
-```
-
-Add outputs to `terraform/team0/outputs.tf`:
-
-```hcl
-output "documents_table_name" {
-  description = "DynamoDB documents catalog table name"
-  value       = aws_dynamodb_table.documents.name
-}
-
-output "documents_table_arn" {
-  description = "DynamoDB documents catalog table ARN"
-  value       = aws_dynamodb_table.documents.arn
-}
+# terraform/team1/terraform.tfvars  (git-ignored)
+entra_tenant_id     = "<your-accenture-tenant-guid>"
+entra_client_id     = "<app-registration-client-id>"
+entra_client_secret = "<app-registration-client-secret>"
 ```
 
 ### Acceptance Criteria
 
-- [x] `terraform apply` creates the `knowledge-base-documents` table
-- [x] GSI `industry-uploaded_at-index` exists and is ACTIVE
-- [ ] `aws dynamodb describe-table --table-name knowledge-base-documents` returns `TableStatus: ACTIVE`
-- [x] S3 bucket policy on the processed bucket is applied — Bedrock service principal can read it
-- [ ] A manual `aws dynamodb put-item` with a test document record succeeds
-- [ ] Query by GSI: `aws dynamodb query --table-name knowledge-base-documents --index-name industry-uploaded_at-index --key-condition-expression "industry = :i" --expression-attribute-values '{":i":{"S":"Banking"}}'` returns results
+- [ ] `terraform apply` creates the Cognito User Pool, domain, Entra ID OIDC provider, and app client
+- [ ] Entra ID redirect URI is registered in the Azure App Registration (matches `https://<cognito-domain>/oauth2/idpresponse`)
+- [ ] Visiting `https://<alb_dns_name>` redirects to the Accenture Microsoft login page
+- [ ] All 6 team members can authenticate with their `@accenture.com` credentials
+- [ ] After login, the browser holds a valid `AWSELBAuthSessionCookie`
+- [ ] `aws cognito-idp list-users --user-pool-id <id>` shows federated user entries after first login
 
 ### Effort Estimate
 
-**Day 1 afternoon** — 30 minutes alongside S3/DynamoDB module
-
----
-
-## TICKET M0-02 — API Gateway + Lambda Presigned URL Generator
-
-### Goal
-
-Expose a REST API (VPC-only, no public endpoint) with a `POST /upload-url` endpoint. The Lambda generates an S3 presigned PUT URL valid for 15 minutes, records the document metadata in DynamoDB, and returns everything the caller needs to upload a file directly to S3.
-
-### API Contract
-
-```
-POST /upload-url
-Content-Type: application/json
-
-{
-  "filename":    "accenture-banking-poc-2025.pdf",
-  "industry":    "Banking",
-  "type":        "PoC",
-  "project":     "Titan",
-  "topic":       "Engineering",
-  "client":      "",
-  "uploaded_by": "zoltan.szilagyi@accenture.com"
-}
-
-→ 200 OK
-{
-  "document_id": "a3f2c1d0-...",
-  "upload_url":  "https://s3.eu-central-1.amazonaws.com/knowledge-base-landing-.../uploads/a3f2c1d0-.../accenture-banking-poc-2025.pdf?X-Amz-...",
-  "s3_key":      "uploads/a3f2c1d0-.../accenture-banking-poc-2025.pdf",
-  "expires_in":  900
-}
-```
-
-### Lambda Implementation
-
-Create `terraform/team0/lambda/presigned_url/index.py`:
-
-```python
-import boto3
-import json
-import os
-import uuid
-from datetime import datetime, timezone
-
-s3 = boto3.client("s3")
-dynamodb = boto3.resource("dynamodb")
-
-LANDING_BUCKET   = os.environ["LANDING_BUCKET"]
-DOCUMENTS_TABLE  = os.environ["DOCUMENTS_TABLE"]
-PRESIGN_EXPIRY   = 900  # 15 minutes
-
-VALID_INDUSTRIES = {"Banking", "Automotive", "Healthcare", "Energy", "Retail",
-                    "Technology", "Insurance", "Telecom", "Other"}
-VALID_TYPES      = {"PoC", "RFP", "Case Study", "Proposal", "Architecture",
-                    "Strategy", "Report", "Other"}
-
-def handler(event, context):
-    try:
-        body = json.loads(event.get("body") or "{}")
-    except json.JSONDecodeError:
-        return _error(400, "Invalid JSON body")
-
-    filename    = body.get("filename", "").strip()
-    industry    = body.get("industry", "Other")
-    doc_type    = body.get("type", "Other")
-    project     = body.get("project", "")
-    topic       = body.get("topic", "")
-    client      = body.get("client", "")
-    uploaded_by = body.get("uploaded_by", "")
-
-    if not filename:
-        return _error(400, "filename is required")
-    if industry not in VALID_INDUSTRIES:
-        return _error(400, f"industry must be one of: {sorted(VALID_INDUSTRIES)}")
-    if doc_type not in VALID_TYPES:
-        return _error(400, f"type must be one of: {sorted(VALID_TYPES)}")
-
-    document_id  = str(uuid.uuid4())
-    s3_key       = f"uploads/{document_id}/{filename}"
-    uploaded_at  = datetime.now(timezone.utc).isoformat()
-
-    # Write metadata to DynamoDB before generating the URL
-    table = dynamodb.Table(DOCUMENTS_TABLE)
-    table.put_item(Item={
-        "document_id": document_id,
-        "filename":    filename,
-        "s3_key":      s3_key,
-        "industry":    industry,
-        "type":        doc_type,
-        "project":     project,
-        "topic":       topic,
-        "client":      client,
-        "uploaded_by": uploaded_by,
-        "uploaded_at": uploaded_at,
-        "status":      "PENDING_UPLOAD"
-    })
-
-    # Generate presigned PUT URL
-    upload_url = s3.generate_presigned_url(
-        "put_object",
-        Params={
-            "Bucket": LANDING_BUCKET,
-            "Key":    s3_key,
-            "ContentType": "application/octet-stream"
-        },
-        ExpiresIn=PRESIGN_EXPIRY
-    )
-
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({
-            "document_id": document_id,
-            "upload_url":  upload_url,
-            "s3_key":      s3_key,
-            "expires_in":  PRESIGN_EXPIRY
-        })
-    }
-
-def _error(code, message):
-    return {
-        "statusCode": code,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({"error": message})
-    }
-```
-
-### Terraform Resources
-
-Add to `terraform/team0/main.tf`:
-
-```hcl
-# -------------------------------------------------------
-# IAM Role for presigned URL Lambda
-# -------------------------------------------------------
-resource "aws_iam_role" "presign_lambda" {
-  name = "${var.project_name}-presign-lambda-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "presign_lambda" {
-  name = "presign-permissions"
-  role = aws_iam_role.presign_lambda.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["s3:PutObject"]
-        Resource = "${module.storage.landing_bucket_arn}/uploads/*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
-        Resource = aws_dynamodb_table.documents.arn
-      },
-      {
-        Effect = "Allow"
-        Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "arn:aws:logs:*:*:*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "presign_vpc" {
-  role       = aws_iam_role.presign_lambda.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
-}
-
-# -------------------------------------------------------
-# Lambda: presigned URL generator
-# -------------------------------------------------------
-data "archive_file" "presign_lambda" {
-  type        = "zip"
-  source_dir  = "${path.module}/lambda/presigned_url"
-  output_path = "${path.module}/lambda/presigned_url.zip"
-}
-
-resource "aws_lambda_function" "presign" {
-  function_name    = "${var.project_name}-presign-url"
-  role             = aws_iam_role.presign_lambda.arn
-  runtime          = "python3.12"
-  handler          = "index.handler"
-  timeout          = 10
-  memory_size      = 128
-  filename         = data.archive_file.presign_lambda.output_path
-  source_code_hash = data.archive_file.presign_lambda.output_base64sha256
-
-  environment {
-    variables = {
-      LANDING_BUCKET  = module.storage.landing_bucket_id
-      DOCUMENTS_TABLE = aws_dynamodb_table.documents.name
-    }
-  }
-
-  vpc_config {
-    subnet_ids         = local.private_subnet_ids
-    security_group_ids = [local.lambda_security_group_id]
-  }
-}
-
-resource "aws_cloudwatch_log_group" "presign_lambda" {
-  name              = "/aws/lambda/${aws_lambda_function.presign.function_name}"
-  retention_in_days = 7
-}
-
-# -------------------------------------------------------
-# API Gateway (REST, private — VPC endpoint only)
-# -------------------------------------------------------
-resource "aws_api_gateway_rest_api" "main" {
-  name        = "${var.project_name}-api"
-  description = "Internal document ingestion API"
-
-  endpoint_configuration {
-    types            = ["PRIVATE"]
-    vpc_endpoint_ids = [data.terraform_remote_state.shared.outputs.endpoint_ids["execute-api"]]
-  }
-}
-
-# Resource: /upload-url
-resource "aws_api_gateway_resource" "upload_url" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
-  path_part   = "upload-url"
-}
-
-resource "aws_api_gateway_method" "upload_url_post" {
-  rest_api_id   = aws_api_gateway_rest_api.main.id
-  resource_id   = aws_api_gateway_resource.upload_url.id
-  http_method   = "POST"
-  authorization = "NONE"    # VPN enforces access; add Cognito authorizer as stretch goal
-}
-
-resource "aws_api_gateway_integration" "upload_url_post" {
-  rest_api_id             = aws_api_gateway_rest_api.main.id
-  resource_id             = aws_api_gateway_resource.upload_url.id
-  http_method             = aws_api_gateway_method.upload_url_post.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.presign.invoke_arn
-}
-
-resource "aws_lambda_permission" "api_gw_presign" {
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.presign.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
-}
-
-resource "aws_api_gateway_deployment" "main" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-
-  triggers = {
-    redeployment = sha1(jsonencode([
-      aws_api_gateway_resource.upload_url.id,
-      aws_api_gateway_method.upload_url_post.id,
-      aws_api_gateway_integration.upload_url_post.id,
-    ]))
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_api_gateway_stage" "main" {
-  deployment_id = aws_api_gateway_deployment.main.id
-  rest_api_id   = aws_api_gateway_rest_api.main.id
-  stage_name    = var.environment
-}
-
-# Resource policy: allow calls only from within the VPC
-resource "aws_api_gateway_rest_api_policy" "vpce_only" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = "*"
-      Action    = "execute-api:Invoke"
-      Resource  = "${aws_api_gateway_rest_api.main.execution_arn}/*"
-      Condition = {
-        StringEquals = {
-          "aws:SourceVpc" = local.vpc_id
-        }
-      }
-    }]
-  })
-}
-```
-
-Add outputs:
-
-```hcl
-output "api_endpoint" {
-  description = "Internal API Gateway base URL"
-  value       = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${var.region}.amazonaws.com/${var.environment}"
-}
-```
-
-### Acceptance Criteria
-
-- [x] `terraform apply` creates the Lambda, API Gateway, and IAM role
-- [ ] `aws lambda invoke --function-name knowledge-base-presign-url --payload '{"body":"{\"filename\":\"test.pdf\",\"industry\":\"Banking\",\"type\":\"PoC\"}"}' /tmp/out.json` returns `statusCode: 200`
-- [ ] The presigned URL in the response accepts a `curl -T test.pdf "<url>"` PUT request and the file appears in S3
-- [ ] DynamoDB shows a new item with `status: PENDING_UPLOAD` after calling the API
-- [ ] Calling with `"industry": "FakeIndustry"` returns `statusCode: 400`
-- [x] API Gateway endpoint is not reachable from outside the VPC (returns connection refused or timeout from public internet)
-- [ ] CloudWatch log group `/aws/lambda/knowledge-base-presign-url` receives logs on each invocation
-
-### Effort Estimate
-
-**Day 2 morning** — Lambda + IAM (~1.5h), API Gateway (~1h)
+**Day 2 morning** — Cognito + Entra wiring (~1.5h); Azure app registration (~30min)
 
 ### Key Pitfalls
 
-- Private API Gateway requires a VPC endpoint for `execute-api` — this is pre-provisioned in shared infra; reference it via `data.terraform_remote_state.shared.outputs.endpoint_ids["execute-api"]`
-- The API Gateway resource policy (`aws_api_gateway_rest_api_policy`) is a **separate resource** from the API — without it, private APIs reject all calls
-- Always use `create_before_destroy = true` on the deployment to avoid downtime during redeployment
-- The presigned URL is generated with `s3:PutObject`, not `s3:GetObject` — the Lambda role only needs put permission on the landing bucket
+- The Cognito hosted-UI domain must be globally unique — using `${project_name}-${account_id}` avoids collisions
+- The Entra ID redirect URI must match **exactly** (including trailing slash, HTTPS, no typos) — a mismatch causes `redirect_uri_mismatch` OIDC errors
+- The ALB uses HTTPS (self-signed cert) — browsers will show a cert warning on first access inside VPN; click through or import the CA. Do NOT switch to HTTP — Cognito auth requires HTTPS
+- `generate_secret = true` is required for ALB integration; user-side OAuth flows use the secret, not the user
+- After the OIDC provider is created, re-run `terraform apply` for the app client — it depends on the provider
 
 ---
 
-## TICKET M0-03 — Lambda Metadata Sidecar + S3 Event Trigger
+## TICKET M1-02 — ECR Image Build + ECS Fargate Service (Open WebUI)
 
 ### Goal
 
-When a file lands in the S3 landing bucket, automatically: create a `.metadata.json` sidecar (matching the shared schema), copy both files to the processed bucket, update the DynamoDB document status, and kick off a Bedrock Knowledge Base sync job.
+Build and push the Open WebUI Docker image to ECR, then deploy it as an ECS Fargate service. Open WebUI is the chat frontend that users interact with after logging in. The container reads Bedrock Agent configuration from environment variables and the SSM secret key.
 
-### S3 Key Convention
-
-```
-uploads/<document_id>/<filename>                    ← original upload
-uploads/<document_id>/<filename>.metadata.json      ← sidecar (created by this Lambda)
-```
-
-The Bedrock KB data source is configured to read `*.metadata.json` files as metadata sidecars alongside their companion documents.
-
-### Lambda Implementation
-
-Create `terraform/team0/lambda/sidecar/index.py`:
-
-```python
-import boto3
-import json
-import os
-import urllib.parse
-from datetime import datetime, timezone
-
-s3          = boto3.client("s3")
-dynamodb    = boto3.resource("dynamodb")
-bedrock_agent = boto3.client("bedrock-agent")
-
-PROCESSED_BUCKET = os.environ["PROCESSED_BUCKET"]
-DOCUMENTS_TABLE  = os.environ["DOCUMENTS_TABLE"]
-BEDROCK_KB_ID    = os.environ["BEDROCK_KB_ID"]       # filled after M0-04
-BEDROCK_DS_ID    = os.environ["BEDROCK_DS_ID"]       # filled after M0-04
-
-def handler(event, context):
-    for record in event["Records"]:
-        bucket   = record["s3"]["bucket"]["name"]
-        raw_key  = record["s3"]["object"]["key"]
-        s3_key   = urllib.parse.unquote_plus(raw_key)
-
-        # Skip sidecar files to avoid infinite trigger loop
-        if s3_key.endswith(".metadata.json"):
-            print(f"Skipping sidecar: {s3_key}")
-            continue
-
-        print(f"Processing: s3://{bucket}/{s3_key}")
-        _process(bucket, s3_key)
-
-def _process(bucket, s3_key):
-    table = dynamodb.Table(DOCUMENTS_TABLE)
-
-    # Extract document_id from key: uploads/<document_id>/<filename>
-    parts       = s3_key.split("/")
-    document_id = parts[1] if len(parts) >= 3 else None
-
-    # Fetch metadata from DynamoDB
-    if document_id:
-        item = table.get_item(Key={"document_id": document_id}).get("Item", {})
-    else:
-        item = {}
-
-    # Build sidecar (Bedrock KB metadata format)
-    metadata = {
-        "metadataAttributes": {
-            "Industry":   item.get("industry", "Other"),
-            "Type":       item.get("type", "Other"),
-            "Project":    item.get("project", ""),
-            "Client":     item.get("client", ""),
-            "Topic":      item.get("topic", ""),
-            "UploadedBy": item.get("uploaded_by", ""),
-            "UploadedAt": item.get("uploaded_at", datetime.now(timezone.utc).isoformat())
-        }
-    }
-
-    sidecar_key = f"{s3_key}.metadata.json"
-
-    # Write sidecar to landing bucket (Bedrock KB syncs from landing or processed — configure one)
-    s3.put_object(
-        Bucket=bucket,
-        Key=sidecar_key,
-        Body=json.dumps(metadata, indent=2),
-        ContentType="application/json"
-    )
-
-    # Copy original + sidecar to processed bucket
-    s3.copy_object(
-        Bucket=PROCESSED_BUCKET,
-        CopySource={"Bucket": bucket, "Key": s3_key},
-        Key=s3_key
-    )
-    s3.copy_object(
-        Bucket=PROCESSED_BUCKET,
-        CopySource={"Bucket": bucket, "Key": sidecar_key},
-        Key=sidecar_key
-    )
-
-    # Update DynamoDB status
-    if document_id:
-        table.update_item(
-            Key={"document_id": document_id},
-            UpdateExpression="SET #s = :s, sidecar_key = :sk",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={
-                ":s": "SIDECAR_CREATED",
-                ":sk": sidecar_key
-            }
-        )
-
-    # Trigger Bedrock KB sync (StartIngestionJob)
-    if BEDROCK_KB_ID and BEDROCK_DS_ID:
-        try:
-            response = bedrock_agent.start_ingestion_job(
-                knowledgeBaseId=BEDROCK_KB_ID,
-                dataSourceId=BEDROCK_DS_ID
-            )
-            job_id = response["ingestionJob"]["ingestionJobId"]
-            print(f"Started ingestion job: {job_id}")
-
-            if document_id:
-                table.update_item(
-                    Key={"document_id": document_id},
-                    UpdateExpression="SET #s = :s, ingestion_job_id = :j",
-                    ExpressionAttributeNames={"#s": "status"},
-                    ExpressionAttributeValues={":s": "INDEXING", ":j": job_id}
-                )
-        except Exception as e:
-            print(f"Failed to start ingestion job: {e}")
-            # Non-fatal — KB can be synced manually if needed
-    else:
-        print("BEDROCK_KB_ID/DS_ID not set — skipping ingestion trigger")
-```
-
-### Terraform Resources
-
-```hcl
-# -------------------------------------------------------
-# IAM Role for sidecar Lambda
-# -------------------------------------------------------
-resource "aws_iam_role" "sidecar_lambda" {
-  name = "${var.project_name}-sidecar-lambda-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "sidecar_lambda" {
-  name = "sidecar-permissions"
-  role = aws_iam_role.sidecar_lambda.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject"]
-        Resource = ["${module.storage.landing_bucket_arn}/*"]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["s3:PutObject"]
-        Resource = ["${module.storage.processed_bucket_arn}/*"]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
-        Resource = [aws_dynamodb_table.documents.arn]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["bedrock:StartIngestionJob"]
-        Resource = "*"    # narrow to KB ARN after M0-04
-      },
-      {
-        Effect = "Allow"
-        Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "arn:aws:logs:*:*:*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "sidecar_vpc" {
-  role       = aws_iam_role.sidecar_lambda.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
-}
-
-# -------------------------------------------------------
-# Lambda: metadata sidecar creator
-# -------------------------------------------------------
-data "archive_file" "sidecar_lambda" {
-  type        = "zip"
-  source_dir  = "${path.module}/lambda/sidecar"
-  output_path = "${path.module}/lambda/sidecar.zip"
-}
-
-resource "aws_lambda_function" "sidecar" {
-  function_name    = "${var.project_name}-metadata-sidecar"
-  role             = aws_iam_role.sidecar_lambda.arn
-  runtime          = "python3.12"
-  handler          = "index.handler"
-  timeout          = 60
-  memory_size      = 256
-  filename         = data.archive_file.sidecar_lambda.output_path
-  source_code_hash = data.archive_file.sidecar_lambda.output_base64sha256
-
-  environment {
-    variables = {
-      PROCESSED_BUCKET = module.storage.processed_bucket_id
-      DOCUMENTS_TABLE  = aws_dynamodb_table.documents.name
-      BEDROCK_KB_ID    = ""    # fill in after M0-04; update via terraform apply
-      BEDROCK_DS_ID    = ""    # fill in after M0-04
-    }
-  }
-
-  vpc_config {
-    subnet_ids         = local.private_subnet_ids
-    security_group_ids = [local.lambda_security_group_id]
-  }
-}
-
-resource "aws_cloudwatch_log_group" "sidecar_lambda" {
-  name              = "/aws/lambda/${aws_lambda_function.sidecar.function_name}"
-  retention_in_days = 7
-}
-
-# -------------------------------------------------------
-# S3 Event Notification → sidecar Lambda
-# -------------------------------------------------------
-resource "aws_lambda_permission" "s3_sidecar" {
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.sidecar.function_name
-  principal     = "s3.amazonaws.com"
-  source_arn    = module.storage.landing_bucket_arn
-}
-
-resource "aws_s3_bucket_notification" "landing_trigger" {
-  bucket = module.storage.landing_bucket_id
-
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.sidecar.arn
-    events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "uploads/"
-    filter_suffix       = ""    # all file types; sidecar Lambda skips *.metadata.json
-  }
-
-  depends_on = [aws_lambda_permission.s3_sidecar]
-}
-```
-
-### Acceptance Criteria
-
-- [ ] Upload a test PDF via the presigned URL; within 30 seconds a `.metadata.json` sidecar appears alongside it in the landing bucket
-- [ ] Both the original file and sidecar are copied to the processed bucket
-- [ ] DynamoDB item transitions: `PENDING_UPLOAD → SIDECAR_CREATED → INDEXING`
-- [ ] CloudWatch logs for the sidecar Lambda show no errors
-- [ ] Uploading a file directly (bypassing the presigned-URL API) still triggers the Lambda; sidecar is created with default `Other`/`Other` values (graceful degradation)
-- [x] Uploading a `.metadata.json` file directly does NOT trigger infinite recursion (Lambda skips sidecar files)
-- [ ] Once M0-04 is deployed, a Bedrock ingestion job starts automatically after each upload
-
-### Effort Estimate
-
-**Day 2 afternoon** — Lambda code + S3 notification (~2h)
-**Day 3 morning** — wire `BEDROCK_KB_ID` after KB is created, end-to-end test
-
-### Key Pitfalls
-
-- The `aws_lambda_permission` with `principal = "s3.amazonaws.com"` must be applied **before** `aws_s3_bucket_notification`, or S3 cannot invoke the Lambda
-- Filter `filter_suffix = ""` means all object types trigger the notification; the Lambda must explicitly skip `.metadata.json` keys to avoid an infinite loop
-- The sidecar `metadataAttributes` key names must exactly match the schema in `docs/metadata-schema.md` — `Industry`, `Type`, etc. are case-sensitive; Bedrock KB rejects unknown keys silently
-
----
-
-## TICKET M0-04 — Bedrock Knowledge Base + Titan V2 Embeddings
-
-### Goal
-
-Create a Bedrock Knowledge Base backed by an S3 Vector Store. Configure Titan Text Embeddings V2 as the embedding model and the processed S3 bucket as the data source. This is the critical integration point: the `bedrock_kb_id` output is what Team 1 plugs into their agent.
-
-### Pre-Step: Enable Model Access
-
-Bedrock models require explicit opt-in:
-
-1. Open AWS Console → Amazon Bedrock → Model access (eu-central-1)
-2. Enable: **Amazon Titan Text Embeddings V2** + **Anthropic Claude 3.5 Sonnet**
-3. Wait for status to become **Access granted** (usually instant for Titan)
+### Step 1: Build and push the image (run once, then update variable)
 
 ```bash
-# Verify via CLI
-aws bedrock list-foundation-models --region eu-central-1 \
-  --query "modelSummaries[?modelId=='amazon.titan-embed-text-v2:0'].{id:modelId,status:modelLifecycle.status}"
+# Authenticate Docker to ECR
+aws ecr get-login-password --region eu-central-1 | \
+  docker login --username AWS --password-stdin \
+  064453091991.dkr.ecr.eu-central-1.amazonaws.com
+
+# Pull Open WebUI image
+docker pull ghcr.io/open-webui/open-webui:main
+
+# Tag and push to ECR
+docker tag ghcr.io/open-webui/open-webui:main \
+  064453091991.dkr.ecr.eu-central-1.amazonaws.com/knowledge-base-chat-frontend:latest
+
+docker push \
+  064453091991.dkr.ecr.eu-central-1.amazonaws.com/knowledge-base-chat-frontend:latest
 ```
 
-### S3 Vector Store
-
-Bedrock S3 Vector Store requires a **dedicated bucket** separate from documents:
-
+Then set in `terraform.tfvars`:
 ```hcl
-# -------------------------------------------------------
-# S3 Vector Store Bucket (for embeddings)
-# -------------------------------------------------------
-resource "aws_s3_bucket" "vector_store" {
-  bucket_prefix = "${var.project_name}-vectors-"
-
-  tags = {
-    Name        = "${var.project_name}-vectors"
-    Environment = var.environment
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "vector_store" {
-  bucket = aws_s3_bucket.vector_store.id
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "aws:kms"
-    }
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "vector_store" {
-  bucket                  = aws_s3_bucket.vector_store.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-# Bedrock needs read/write on the vector store bucket
-resource "aws_s3_bucket_policy" "vector_store_bedrock" {
-  bucket = aws_s3_bucket.vector_store.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "bedrock.amazonaws.com" }
-      Action    = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
-      Resource  = [
-        aws_s3_bucket.vector_store.arn,
-        "${aws_s3_bucket.vector_store.arn}/*"
-      ]
-      Condition = {
-        StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
-      }
-    }]
-  })
-}
-```
-
-### Terraform Resources — Knowledge Base
-
-```hcl
-# -------------------------------------------------------
-# IAM Role for Bedrock Knowledge Base
-# -------------------------------------------------------
-resource "aws_iam_role" "bedrock_kb" {
-  name = "${var.project_name}-bedrock-kb-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "bedrock.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-      Condition = {
-        StringEquals = {
-          "aws:SourceAccount" = data.aws_caller_identity.current.account_id
-        }
-      }
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "bedrock_kb" {
-  name = "kb-permissions"
-  role = aws_iam_role.bedrock_kb.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["bedrock:InvokeModel"]
-        Resource = "arn:aws:bedrock:${var.region}::foundation-model/amazon.titan-embed-text-v2:0"
-      },
-      {
-        Effect = "Allow"
-        Action = ["s3:GetObject", "s3:ListBucket"]
-        Resource = [
-          module.storage.processed_bucket_arn,
-          "${module.storage.processed_bucket_arn}/*"
-        ]
-      },
-      {
-        Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
-        Resource = [
-          aws_s3_bucket.vector_store.arn,
-          "${aws_s3_bucket.vector_store.arn}/*"
-        ]
-      }
-    ]
-  })
-}
-
-# -------------------------------------------------------
-# Bedrock Knowledge Base (S3 Vector Store)
-# -------------------------------------------------------
-resource "aws_bedrockagent_knowledge_base" "main" {
-  name     = "${var.project_name}-knowledge-base"
-  role_arn = aws_iam_role.bedrock_kb.arn
-
-  knowledge_base_configuration {
-    type = "VECTOR"
-    vector_knowledge_base_configuration {
-      embedding_model_arn = "arn:aws:bedrock:${var.region}::foundation-model/amazon.titan-embed-text-v2:0"
-    }
-  }
-
-  storage_configuration {
-    type = "S3"
-    s3_configuration {
-      bucket_arn = aws_s3_bucket.vector_store.arn
-    }
-  }
-
-  tags = { Name = "${var.project_name}-knowledge-base" }
-}
-
-# -------------------------------------------------------
-# Data Source: processed S3 bucket
-# -------------------------------------------------------
-resource "aws_bedrockagent_data_source" "processed" {
-  name             = "${var.project_name}-docs-source"
-  knowledge_base_id = aws_bedrockagent_knowledge_base.main.id
-
-  data_source_configuration {
-    type = "S3"
-    s3_configuration {
-      bucket_arn          = module.storage.processed_bucket_arn
-      inclusion_prefixes  = ["uploads/"]
-    }
-  }
-
-  # Read .metadata.json sidecars as document metadata
-  vector_ingestion_configuration {
-    chunking_configuration {
-      chunking_strategy = "FIXED_SIZE"
-      fixed_size_chunking_configuration {
-        max_tokens         = 512
-        overlap_percentage = 20
-      }
-    }
-
-    # Tell Bedrock to look for <filename>.metadata.json alongside each file
-    custom_transformation_configuration {
-      # Inline metadata — Bedrock KB reads sidecar automatically if bucket_owner_full_control is set
-      # No additional config needed when sidecars follow the <key>.metadata.json convention
-    }
-  }
-}
-```
-
-### Wiring Back to M0-03
-
-After `terraform apply` succeeds for M0-04, update the sidecar Lambda environment variables:
-
-```hcl
-# In aws_lambda_function.sidecar environment block:
-BEDROCK_KB_ID = aws_bedrockagent_knowledge_base.main.id
-BEDROCK_DS_ID = aws_bedrockagent_data_source.processed.data_source_id
-```
-
-### Critical Outputs (consumed by Team 1)
-
-```hcl
-output "bedrock_kb_id" {
-  description = "Bedrock Knowledge Base ID — Team 1 plugs this into their Agent"
-  value       = aws_bedrockagent_knowledge_base.main.id
-}
-
-output "bedrock_kb_arn" {
-  description = "Bedrock Knowledge Base ARN"
-  value       = aws_bedrockagent_knowledge_base.main.arn
-}
-
-output "s3_vector_store_arn" {
-  description = "S3 Vector Store bucket ARN"
-  value       = aws_s3_bucket.vector_store.arn
-}
-
-output "landing_bucket_name" {
-  description = "Landing bucket name (for presigned URL generation and Team 1 citation links)"
-  value       = module.storage.landing_bucket_id
-}
-
-output "bedrock_data_source_id" {
-  description = "Bedrock KB data source ID (for manual sync trigger)"
-  value       = aws_bedrockagent_data_source.processed.data_source_id
-}
-```
-
-### Acceptance Criteria
-
-- [x] `terraform apply` creates KB, data source, vector store bucket, and all IAM roles
-- [ ] `aws bedrock-agent get-knowledge-base --knowledge-base-id <id>` shows `status: ACTIVE`
-- [ ] Upload a test PDF through the presigned URL flow → sidecar is created → ingestion job starts
-- [ ] `aws bedrock-agent get-ingestion-job --knowledge-base-id <id> --data-source-id <ds> --ingestion-job-id <job>` shows `status: COMPLETE`
-- [ ] Test retrieval: `aws bedrock-agent-runtime retrieve --knowledge-base-id <id> --retrieval-query '{"text":"test query"}' --retrieval-configuration '{"vectorSearchConfiguration":{"numberOfResults":3}}'` returns results
-- [ ] Metadata-filtered retrieval works: add `filter: {"equals":{"key":"Industry","value":"Banking"}}` to the retrieve call — only Banking documents come back
-- [x] `bedrock_kb_id` output is visible in Terraform state and can be read by Team 1 via `terraform_remote_state`
-
-### Effort Estimate
-
-**Day 2 afternoon** — KB + data source Terraform (~1.5h)
-**Day 3 morning** — ingest 3–5 test docs, verify metadata filtering works
-
-### Key Pitfalls
-
-- Bedrock KB creation can take 2–3 minutes — `terraform apply` will wait; don't cancel it
-- The IAM role for the KB must use a trust policy with `aws:SourceAccount` condition, or Bedrock will reject it
-- `inclusion_prefixes` must match the S3 key prefix where documents are stored — if empty, Bedrock scans the entire bucket including sidecars
-- Sidecar format for Bedrock: the file must be at `<document_key>.metadata.json` and contain `{"metadataAttributes": {...}}` — not a flat JSON; wrong structure causes silent metadata loss
-- `FIXED_SIZE` chunking with 512 tokens / 20% overlap is a sensible default for PDF slides and reports; reduce to 256 tokens for dense technical docs
-- S3 Vectors is a newer feature — ensure the account has it enabled in `eu-central-1` before plan/apply
-
----
-
-## TICKET M0-05 — EventBridge + SES Weekly Digest + CloudWatch
-
-### Goal
-
-Send an automated weekly email digest to the team listing how many documents were indexed per Industry and Type, and alert on Lambda errors and API latency breaches. All triggered by EventBridge; no manual intervention needed.
-
-### Weekly Digest Email Format
-
-```
-Subject: [AABG Knowledge Base] Weekly Digest — 2026-07-28
-
-Documents indexed this week: 12
-
-By Industry:
-  Banking:     5
-  Healthcare:  3
-  Automotive:  4
-
-By Type:
-  PoC:         6
-  Case Study:  4
-  Proposal:    2
-
-Recent uploads (last 7 days):
-  - accenture-banking-poc-2025.pdf  (Banking / PoC, uploaded by z.szilagyi)
-  - titan-architecture-v3.pptx      (Technology / Architecture, uploaded by aigul)
-  ...
-
-Knowledge Base status:
-  Total documents indexed: 47
-  Last sync: 2026-07-27 14:30 UTC
-  Vector store size: 47 vectors
-
----
-Sent automatically by the AABG Knowledge Platform.
-```
-
-### Lambda Implementation
-
-Create `terraform/team0/lambda/digest/index.py`:
-
-```python
-import boto3
-import json
-import os
-from datetime import datetime, timezone, timedelta
-from collections import defaultdict
-
-dynamodb = boto3.resource("dynamodb")
-ses      = boto3.client("ses", region_name=os.environ["AWS_REGION"])
-bedrock_agent = boto3.client("bedrock-agent")
-
-DOCUMENTS_TABLE  = os.environ["DOCUMENTS_TABLE"]
-DIGEST_RECIPIENT = os.environ["DIGEST_RECIPIENT"]
-DIGEST_SENDER    = os.environ["DIGEST_SENDER"]
-BEDROCK_KB_ID    = os.environ["BEDROCK_KB_ID"]
-
-def handler(event, context):
-    table     = dynamodb.Table(DOCUMENTS_TABLE)
-    one_week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-
-    # Full scan for aggregate stats (small table — fine for hackathon)
-    response = table.scan(
-        FilterExpression="attribute_exists(document_id)"
-    )
-    all_docs = response.get("Items", [])
-
-    recent_docs = [d for d in all_docs if d.get("uploaded_at", "") >= one_week_ago]
-
-    by_industry = defaultdict(int)
-    by_type     = defaultdict(int)
-    for doc in all_docs:
-        by_industry[doc.get("industry", "Other")] += 1
-        by_type[doc.get("type", "Other")]         += 1
-
-    # Get KB stats
-    try:
-        kb_info = bedrock_agent.get_knowledge_base(knowledgeBaseId=BEDROCK_KB_ID)
-        kb_status = kb_info["knowledgeBase"]["status"]
-    except Exception:
-        kb_status = "UNKNOWN"
-
-    body = _build_email(
-        recent_docs=recent_docs,
-        by_industry=by_industry,
-        by_type=by_type,
-        total=len(all_docs),
-        kb_status=kb_status
-    )
-
-    ses.send_email(
-        Source=DIGEST_SENDER,
-        Destination={"ToAddresses": [DIGEST_RECIPIENT]},
-        Message={
-            "Subject": {"Data": f"[AABG Knowledge Base] Weekly Digest — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"},
-            "Body":    {"Text": {"Data": body}}
-        }
-    )
-    print(f"Digest sent to {DIGEST_RECIPIENT}")
-
-def _build_email(recent_docs, by_industry, by_type, total, kb_status):
-    lines = [
-        f"Documents indexed this week: {len(recent_docs)}",
-        "",
-        "By Industry:"
-    ]
-    for industry, count in sorted(by_industry.items(), key=lambda x: -x[1]):
-        lines.append(f"  {industry:<16} {count}")
-    lines += ["", "By Type:"]
-    for t, count in sorted(by_type.items(), key=lambda x: -x[1]):
-        lines.append(f"  {t:<16} {count}")
-    lines += ["", f"Recent uploads (last 7 days):"]
-    for doc in sorted(recent_docs, key=lambda d: d.get("uploaded_at",""), reverse=True)[:10]:
-        lines.append(f"  - {doc['filename']}  ({doc.get('industry','?')} / {doc.get('type','?')}, "
-                     f"uploaded by {doc.get('uploaded_by','unknown')})")
-    lines += [
-        "",
-        "Knowledge Base status:",
-        f"  Total documents indexed: {total}",
-        f"  KB status: {kb_status}",
-        "",
-        "---",
-        "Sent automatically by the AABG Knowledge Platform."
-    ]
-    return "\n".join(lines)
+open_webui_image = "064453091991.dkr.ecr.eu-central-1.amazonaws.com/knowledge-base-chat-frontend:latest"
 ```
 
 ### Terraform Resources
 
 ```hcl
-# -------------------------------------------------------
-# SES Email Identity (verify sender address)
-# -------------------------------------------------------
-resource "aws_ses_email_identity" "digest_sender" {
-  email = var.digest_sender_email    # e.g. zoltan.szilagyi@accenture.com
+# SSM parameter for Open WebUI session-signing key
+resource "aws_ssm_parameter" "webui_secret_key" {
+  name  = "/${var.project_name}/open-webui/secret-key"
+  type  = "SecureString"
+  value = "REPLACE_ME_CHANGE_AFTER_FIRST_DEPLOY_MIN_32_CHARS"
+  lifecycle { ignore_changes = [value] }
 }
 
-# -------------------------------------------------------
-# IAM Role for digest Lambda
-# -------------------------------------------------------
-resource "aws_iam_role" "digest_lambda" {
-  name = "${var.project_name}-digest-lambda-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "digest_lambda" {
-  name = "digest-permissions"
-  role = aws_iam_role.digest_lambda.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:Scan", "dynamodb:Query"]
-        Resource = [aws_dynamodb_table.documents.arn, "${aws_dynamodb_table.documents.arn}/index/*"]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["ses:SendEmail"]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["bedrock:GetKnowledgeBase"]
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "arn:aws:logs:*:*:*"
-      }
-    ]
-  })
-}
-
-data "archive_file" "digest_lambda" {
-  type        = "zip"
-  source_dir  = "${path.module}/lambda/digest"
-  output_path = "${path.module}/lambda/digest.zip"
-}
-
-resource "aws_lambda_function" "digest" {
-  function_name    = "${var.project_name}-weekly-digest"
-  role             = aws_iam_role.digest_lambda.arn
-  runtime          = "python3.12"
-  handler          = "index.handler"
-  timeout          = 60
-  memory_size      = 256
-  filename         = data.archive_file.digest_lambda.output_path
-  source_code_hash = data.archive_file.digest_lambda.output_base64sha256
-
-  environment {
-    variables = {
-      DOCUMENTS_TABLE  = aws_dynamodb_table.documents.name
-      DIGEST_RECIPIENT = var.digest_recipient_email
-      DIGEST_SENDER    = var.digest_sender_email
-      BEDROCK_KB_ID    = ""    # fill after M0-04
-    }
-  }
-  # Digest Lambda queries DynamoDB via VPC Gateway Endpoint — no VPC config needed
-  # unless SES is not accessible from inside VPC (use NAT GW or VPC endpoint for SES)
-}
-
-resource "aws_cloudwatch_log_group" "digest_lambda" {
-  name              = "/aws/lambda/${aws_lambda_function.digest.function_name}"
+resource "aws_cloudwatch_log_group" "open_webui" {
+  name              = "/ecs/${var.project_name}-open-webui"
   retention_in_days = 14
 }
 
-# -------------------------------------------------------
-# EventBridge: weekly schedule (Monday 08:00 UTC)
-# -------------------------------------------------------
-resource "aws_cloudwatch_event_rule" "weekly_digest" {
-  name                = "${var.project_name}-weekly-digest"
-  description         = "Trigger weekly knowledge base digest email"
-  schedule_expression = "cron(0 8 ? * MON *)"
+# ECS task role — runtime AWS API calls from the container
+resource "aws_iam_role" "ecs_task" {
+  name = "${var.project_name}-open-webui-task"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{ Effect = "Allow", Action = "sts:AssumeRole",
+      Principal = { Service = "ecs-tasks.amazonaws.com" } }]
+  })
 }
 
-resource "aws_cloudwatch_event_target" "digest_lambda" {
-  rule      = aws_cloudwatch_event_rule.weekly_digest.name
-  target_id = "DigestLambda"
-  arn       = aws_lambda_function.digest.arn
-}
-
-resource "aws_lambda_permission" "eventbridge_digest" {
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.digest.function_name
-  principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.weekly_digest.arn
-}
-
-# -------------------------------------------------------
-# CloudWatch Alarms
-# -------------------------------------------------------
-resource "aws_cloudwatch_metric_alarm" "presign_lambda_errors" {
-  alarm_name          = "${var.project_name}-presign-errors"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
-  period              = 60
-  statistic           = "Sum"
-  threshold           = 0
-  alarm_description   = "Presigned URL Lambda is throwing errors"
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.presign.function_name
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "sidecar_lambda_errors" {
-  alarm_name          = "${var.project_name}-sidecar-errors"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
-  period              = 60
-  statistic           = "Sum"
-  threshold           = 0
-  alarm_description   = "Metadata sidecar Lambda is throwing errors"
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.sidecar.function_name
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "api_latency" {
-  alarm_name          = "${var.project_name}-api-latency"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 2
-  metric_name         = "Latency"
-  namespace           = "AWS/ApiGateway"
-  period              = 60
-  statistic           = "p99"
-  threshold           = 3000    # 3 seconds
-  alarm_description   = "API Gateway p99 latency exceeds 3s"
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    ApiName = aws_api_gateway_rest_api.main.name
-    Stage   = aws_api_gateway_stage.main.stage_name
-  }
-}
-
-# -------------------------------------------------------
-# CloudWatch Dashboard
-# -------------------------------------------------------
-resource "aws_cloudwatch_dashboard" "main" {
-  dashboard_name = "${var.project_name}-team0"
-
-  dashboard_body = jsonencode({
-    widgets = [
+resource "aws_iam_role_policy" "ecs_task" {
+  name = "open-webui-bedrock-access"
+  role = aws_iam_role.ecs_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
       {
-        type = "metric"
-        properties = {
-          title  = "Lambda Invocations & Errors"
-          period = 300
-          stat   = "Sum"
-          metrics = [
-            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.presign.function_name],
-            ["AWS/Lambda", "Errors",      "FunctionName", aws_lambda_function.presign.function_name],
-            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.sidecar.function_name],
-            ["AWS/Lambda", "Errors",      "FunctionName", aws_lambda_function.sidecar.function_name]
-          ]
-        }
+        Sid    = "BedrockAgentInvoke"
+        Effect = "Allow"
+        Action = ["bedrock-agent-runtime:InvokeAgent",
+                  "bedrock-agent-runtime:Retrieve",
+                  "bedrock-agent-runtime:RetrieveAndGenerate"]
+        Resource = [
+          "arn:aws:bedrock:${local.region}:${local.account_id}:agent/${aws_bedrockagent_agent.main.agent_id}",
+          "arn:aws:bedrock:${local.region}:${local.account_id}:agent-alias/${aws_bedrockagent_agent.main.agent_id}/*",
+          "arn:aws:bedrock:${local.region}:${local.account_id}:knowledge-base/${local.bedrock_kb_id}",
+        ]
       },
-      {
-        type = "metric"
-        properties = {
-          title   = "API Gateway Latency (p99)"
-          period  = 300
-          stat    = "p99"
-          metrics = [
-            ["AWS/ApiGateway", "Latency", "ApiName", aws_api_gateway_rest_api.main.name, "Stage", var.environment]
-          ]
-        }
-      },
-      {
-        type = "metric"
-        properties = {
-          title   = "S3 Landing Bucket — Objects"
-          period  = 86400
-          stat    = "Average"
-          metrics = [
-            ["AWS/S3", "NumberOfObjects", "BucketName", module.storage.landing_bucket_id, "StorageType", "AllStorageTypes"]
-          ]
-        }
-      }
+      { Sid = "SSMRead", Effect = "Allow",
+        Action = ["ssm:GetParameter"],
+        Resource = aws_ssm_parameter.webui_secret_key.arn }
     ]
   })
 }
-```
 
-Add variables:
+resource "aws_ecs_task_definition" "open_webui" {
+  family                   = "${var.project_name}-open-webui"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "1024"
+  memory                   = "2048"
+  execution_role_arn       = module.compute.ecs_task_execution_role_arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
 
-```hcl
-variable "digest_sender_email" {
-  description = "SES-verified sender address for the weekly digest"
-  type        = string
-  default     = "zoltan.szilagyi@accenture.com"
+  container_definitions = jsonencode([{
+    name  = "open-webui"
+    image = local.container_image   # ECR URL or var.open_webui_image
+    portMappings = [{ containerPort = 8080, protocol = "tcp" }]
+    environment = [
+      { name = "WEBUI_AUTH",           value = "true"  },
+      { name = "ENABLE_SIGNUP",        value = "false" },
+      { name = "DEFAULT_USER_ROLE",    value = "user"  },
+      { name = "AWS_REGION",           value = local.region },
+      { name = "BEDROCK_AGENT_ID",     value = aws_bedrockagent_agent.main.agent_id },
+      { name = "BEDROCK_AGENT_ALIAS_ID", value = aws_bedrockagent_agent_alias.live.agent_alias_id },
+      { name = "KNOWLEDGE_BASE_ID",    value = local.bedrock_kb_id },
+    ]
+    secrets = [{ name = "WEBUI_SECRET_KEY",
+                 valueFrom = aws_ssm_parameter.webui_secret_key.arn }]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.open_webui.name
+        "awslogs-region"        = local.region
+        "awslogs-stream-prefix" = "open-webui"
+      }
+    }
+    healthCheck = {
+      command     = ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval    = 30, timeout = 5, retries = 3, startPeriod = 60
+    }
+  }])
 }
 
-variable "digest_recipient_email" {
-  description = "Email address to receive the weekly digest"
-  type        = string
-  default     = "zoltan.szilagyi@accenture.com"
+resource "aws_ecs_service" "open_webui" {
+  name            = "${var.project_name}-open-webui"
+  cluster         = module.compute.ecs_cluster_arn
+  task_definition = aws_ecs_task_definition.open_webui.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+  force_new_deployment = true
+
+  network_configuration {
+    subnets         = local.private_subnet_ids
+    security_groups = [local.ecs_tasks_security_group_id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.chat_frontend.arn
+    container_name   = "open-webui"
+    container_port   = 8080
+  }
+
+  depends_on = [aws_lb_listener_rule.chat_frontend]
 }
 ```
 
 ### Acceptance Criteria
 
-- [ ] SES email identity is verified — check spam/inbox for the AWS confirmation email and click the link
-- [ ] `aws events put-events` or a manual Lambda test invocation sends the digest email successfully
-- [ ] Email arrives with correct subject and body (document counts per Industry/Type)
-- [ ] EventBridge rule shows next scheduled fire time in the console
-- [x] CloudWatch dashboard `knowledge-base-team0` loads and shows Lambda invocation metrics
-- [ ] Triggering 1+ Lambda errors causes the `knowledge-base-presign-errors` alarm to enter `ALARM` state within 1 minute
+- [x] `terraform apply` creates the ECS task definition, service, IAM task role, SSM parameter, and log group
+- [ ] Image appears in ECR: `aws ecr list-images --repository-name knowledge-base-chat-frontend`
+- [ ] ECS service shows 1/1 running tasks: `aws ecs describe-services --cluster knowledge-base-cluster --services knowledge-base-open-webui`
+- [ ] Container health check passes — task reaches `RUNNING` state without cycling
+- [ ] CloudWatch log group `/ecs/knowledge-base-open-webui` receives logs within 2 minutes of service start
+- [ ] Change `WEBUI_SECRET_KEY` SSM value via console after first deploy (lifecycle `ignore_changes` protects it on subsequent applies)
 
 ### Effort Estimate
 
-**Day 3 afternoon** — Lambda + EventBridge + SES (~2h), CloudWatch alarms (~30min)
+**Day 2 afternoon** — Docker push (~30min), Terraform (~45min), troubleshooting (~45min)
 
 ### Key Pitfalls
 
-- SES in a new account is in **sandbox mode** — you can only send to verified email addresses. Both the sender AND recipient must be SES-verified during the hackathon. Request production access if needed (takes ~24h — do this Day 1)
-- The digest Lambda does a full DynamoDB `Scan` — acceptable for the hackathon (small table), but add a note that this should become a GSI query for production
-- EventBridge `cron` syntax is AWS-specific: `cron(0 8 ? * MON *)` — note the `?` in the day-of-month position (required when day-of-week is specified)
-- The digest Lambda does not need to be inside the VPC (it accesses DynamoDB via Gateway endpoint and SES via the internet); omit `vpc_config` to avoid needing the VPC endpoint policy for SES
+- ECR image pull happens inside the private VPC — the `ecr.api` and `ecr.dkr` VPC endpoints (provisioned by Team 0) are required; pulls will time out without them
+- Container CPU/memory: Open WebUI needs at least 512 CPU / 1024 MiB; using 1024 / 2048 avoids OOM on startup
+- `WEBUI_SECRET_KEY` must be at least 32 characters — if the placeholder value is too short, Open WebUI will refuse to start
+- The `force_new_deployment = true` flag forces a fresh task launch on every `terraform apply`; useful during hackathon iteration but will briefly interrupt users
+- If the health check fails, check that `/health` returns 200. Open WebUI may take 60+ seconds to initialize (startup DB migrations) — the `startPeriod = 60` handles this
 
 ---
 
-## Team 0 → Team 1 Handoff Checklist
+## TICKET M1-03 — ALB Target Group + Cognito Listener Rule
 
-Run this before Day 3 afternoon so Team 1 can finish their Bedrock Agent:
+### Goal
+
+Wire the ECS Open WebUI service to the **shared internal ALB** (provisioned by Team 0 in `terraform/shared`) using an ALB listener rule that first authenticates via Cognito and then forwards authenticated requests to the ECS target group. This is the single HTTPS entry point for all users.
+
+### Architecture
+
+```
+User (inside VPN)
+  │  HTTPS 443
+  ▼
+Shared Internal ALB  (alb_listener_arn from shared state)
+  │  listener rule priority 100
+  ▼
+authenticate-cognito action  ──► Cognito Hosted UI ──► Entra ID SSO
+  │  on success: sets AWSELBAuthSessionCookie
+  ▼
+forward action
+  │
+  ▼
+Target Group  (ip, port 8080)
+  │
+  ▼
+ECS Fargate Task  (Open WebUI container)
+```
+
+### Terraform Resources
+
+```hcl
+resource "aws_lb_target_group" "chat_frontend" {
+  name        = "${var.project_name}-chat-tg"
+  port        = 8080
+  protocol    = "HTTP"
+  vpc_id      = local.vpc_id
+  target_type = "ip"   # required for Fargate awsvpc networking
+
+  health_check {
+    enabled             = true
+    path                = "/health"
+    protocol            = "HTTP"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 30
+    matcher             = "200"
+  }
+}
+
+resource "aws_lb_listener_rule" "chat_frontend" {
+  listener_arn = local.alb_listener_arn   # HTTPS listener from shared state
+  priority     = 100
+
+  action {
+    type = "authenticate-cognito"
+    authenticate_cognito {
+      user_pool_arn              = aws_cognito_user_pool.main.arn
+      user_pool_client_id        = aws_cognito_user_pool_client.open_webui.id
+      user_pool_domain           = aws_cognito_user_pool_domain.main.domain
+      on_unauthenticated_request = "authenticate"
+      session_cookie_name        = "AWSELBAuthSessionCookie"
+      session_timeout            = 28800   # 8 hours
+    }
+  }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.chat_frontend.arn
+  }
+
+  condition {
+    path_pattern { values = ["/*"] }
+  }
+}
+```
+
+### Acceptance Criteria
+
+- [x] `terraform apply` creates the target group and listener rule on the shared ALB
+- [ ] `aws elbv2 describe-target-groups` shows `knowledge-base-chat-tg` as `active`
+- [ ] Visiting `https://<alb_dns_name>` redirects to the Accenture Entra ID login page (unauthenticated)
+- [ ] After login, the browser is redirected back to Open WebUI (not a 502/503)
+- [ ] Target health check shows targets as `healthy`: `aws elbv2 describe-target-health --target-group-arn <arn>`
+- [ ] Requests from outside the VPC (no VPN) receive a connection timeout — not a 200
+
+### Effort Estimate
+
+**Day 2 afternoon** — ~30min (depends on M1-01 and M1-02 being done first)
+
+### Key Pitfalls
+
+- The shared ALB has a **self-signed TLS certificate** — the ALB can still perform Cognito auth with self-signed certs, but browsers will show a certificate warning. This is expected during the hackathon
+- `target_type = "ip"` is mandatory for Fargate tasks (awsvpc network mode); `instance` type won't work
+- Listener rule priority 100 may conflict if other rules exist — check `aws elbv2 describe-rules --listener-arn <arn>` before applying
+- The `authenticate-cognito` action must be the **first** action block; `forward` must be second — order matters in the HCL
+- Health check path `/health` bypasses Cognito auth at the ALB level — it goes directly to the container
+
+---
+
+## TICKET M1-04 — Bedrock Agent + Knowledge Base Association
+
+### Goal
+
+Create a Bedrock Agent backed by Claude 3.5 Sonnet that retrieves documents from Team 0's Knowledge Base and generates grounded answers with inline source citations. The agent uses the `RETRIEVE_AND_GENERATE` flow — no custom Lambda action group needed for basic RAG.
+
+### Terraform Resources
+
+```hcl
+resource "aws_iam_role" "bedrock_agent" {
+  name = "${var.project_name}-bedrock-agent"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "bedrock.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = {
+        StringEquals = { "aws:SourceAccount" = local.account_id }
+        ArnLike = {
+          "aws:SourceArn" = "arn:aws:bedrock:${local.region}:${local.account_id}:agent/*"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "bedrock_agent" {
+  name = "bedrock-agent-kb-access"
+  role = aws_iam_role.bedrock_agent.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "InvokeModel"
+        Effect   = "Allow"
+        Action   = ["bedrock:InvokeModel"]
+        Resource = [
+          "arn:aws:bedrock:${local.region}::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0",
+          "arn:aws:bedrock:${local.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
+        ]
+      },
+      {
+        Sid      = "KnowledgeBaseRetrieve"
+        Effect   = "Allow"
+        Action   = ["bedrock:Retrieve", "bedrock:RetrieveAndGenerate"]
+        Resource = "arn:aws:bedrock:${local.region}:${local.account_id}:knowledge-base/${local.bedrock_kb_id}"
+      }
+    ]
+  })
+}
+
+resource "aws_bedrockagent_agent" "main" {
+  agent_name              = "${var.project_name}-agent"
+  description             = "Knowledge retrieval agent — searches Team 0 KB and returns cited answers"
+  agent_resource_role_arn = aws_iam_role.bedrock_agent.arn
+  foundation_model        = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+  idle_session_ttl_in_seconds = 600
+
+  instruction = <<-EOT
+    You are a helpful knowledge assistant for Accenture consultants.
+    When a user asks a question, search the knowledge base for relevant documents.
+    Always base your answers strictly on the retrieved content — do not make up information.
+    For every factual claim, cite the source document with the format: [Source: <filename>, Page <N>].
+    Place citations inline, immediately after the sentence they support.
+    If no relevant documents are found, say so clearly rather than guessing.
+    Keep answers concise but complete. Use bullet points for lists of findings.
+  EOT
+
+  prepare_agent = true
+}
+
+resource "aws_bedrockagent_agent_knowledge_base_association" "main" {
+  agent_id             = aws_bedrockagent_agent.main.agent_id
+  description          = "Team 0 Knowledge Base — document corpus for retrieval"
+  knowledge_base_id    = local.bedrock_kb_id
+  knowledge_base_state = "ENABLED"
+}
+
+resource "aws_bedrockagent_agent_alias" "live" {
+  agent_id         = aws_bedrockagent_agent.main.agent_id
+  agent_alias_name = "live"
+  description      = "Stable alias used by Open WebUI — points to DRAFT during hackathon"
+  depends_on       = [aws_bedrockagent_agent_knowledge_base_association.main]
+}
+```
+
+### Acceptance Criteria
+
+- [x] `terraform apply` creates the Bedrock Agent, KB association, alias, and IAM role
+- [ ] `aws bedrock-agent get-agent --agent-id <id>` shows `agentStatus: PREPARED`
+- [ ] Test invocation returns a non-empty response with at least one citation:
+  ```bash
+  aws bedrock-agent-runtime invoke-agent \
+    --agent-id <id> \
+    --agent-alias-id <alias-id> \
+    --session-id test-session-1 \
+    --input-text "What documents do we have about banking regulations?" \
+    --region eu-central-1 \
+    output.json
+  cat output.json | jq '.citations'
+  ```
+- [ ] Citations reference actual document names from the landing/processed S3 bucket
+- [ ] `terraform output bedrock_agent_id` returns a non-empty ID
+- [ ] `terraform output bedrock_agent_alias_id` returns the `live` alias ID
+
+### Effort Estimate
+
+**Day 3 morning** — IAM + Terraform (~45min); agent testing (~30min)
+
+### Key Pitfalls
+
+- Bedrock model access must be granted in the AWS console (T0-06 prerequisite) — the agent will return `AccessDeniedException` if Claude 3.5 Sonnet isn't enabled for this account
+- `prepare_agent = true` tells the Terraform provider to call the `PrepareAgent` API after creation — without it, the agent stays in `NOT_PREPARED` state and InvokeAgent calls fail
+- The KB must have at least one successfully ingested document before the agent returns meaningful answers — coordinate with Team 0 on the handoff checklist
+- Agent alias `live` points to `DRAFT` during the hackathon — this is intentional. For production you'd create a numbered version first
+- The `idle_session_ttl_in_seconds = 600` (10 min) means the agent context window resets after 10 minutes of silence; adjust if demos need longer sessions
+
+---
+
+## TICKET M1-05 — Grounded Answers + Clickable Citations in Open WebUI
+
+### Goal
+
+Configure Open WebUI to invoke the Bedrock Agent and surface source citations as clickable links. Every answer the assistant gives must include the document source, so users can verify the information and open the original file.
+
+### Architecture — Answer Flow
+
+```
+User types question in Open WebUI
+  │
+  ▼
+Open WebUI backend  →  bedrock-agent-runtime:InvokeAgent
+                            │  (BEDROCK_AGENT_ID, BEDROCK_AGENT_ALIAS_ID from env)
+                            ▼
+                    Bedrock Agent (Claude 3.5 Sonnet)
+                            │  Retrieve tool call
+                            ▼
+                    Bedrock Knowledge Base (Team 0)
+                            │  top-k matching chunks + metadata
+                            ▼
+                    Claude synthesizes answer + formats inline citations
+                            │
+  ◄──────────────────────────
+Open WebUI renders markdown with [Source: doc.pdf, Page 3] links
+```
+
+### Open WebUI Configuration (post-deploy, via UI)
+
+After the ECS service is running and the Bedrock Agent is deployed:
+
+1. **Admin Panel → Settings → Connections**
+   - Add a new OpenAI-compatible API endpoint
+   - URL: use a custom backend wrapper (see below) OR use the Bedrock Agent SDK integration
+   
+2. **Alternative — Direct Bedrock Agent backend** (recommended for hackathon):
+   - Open WebUI supports custom function calling; configure `BEDROCK_AGENT_ID` and `BEDROCK_AGENT_ALIAS_ID` env vars (already set in task definition)
+   - In `Admin Panel → Settings → Models`, add a model named `bedrock-agent` pointing to the Bedrock Agent runtime endpoint
+
+3. **Citation rendering**: Open WebUI renders markdown by default. The Bedrock Agent's instruction formats citations as `[Source: <file>, Page <N>]`. These appear inline in the chat response. To make them clickable, wrap them in S3 presigned URL links:
+   - Have Team 0 generate a presigned GET URL for each cited document
+   - The agent instruction can reference a document retrieval endpoint
+
+### Environment Variables (already set in ECS task definition)
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `WEBUI_AUTH` | `true` | Require login (Cognito handles it via ALB) |
+| `ENABLE_SIGNUP` | `false` | Block direct registration — SSO only |
+| `BEDROCK_AGENT_ID` | `<terraform output>` | Which Bedrock Agent to invoke |
+| `BEDROCK_AGENT_ALIAS_ID` | `<terraform output>` | Which alias (always `live`) |
+| `KNOWLEDGE_BASE_ID` | `<terraform output from team0>` | Direct KB access for fallback |
+| `AWS_REGION` | `eu-central-1` | For SDK calls |
+| `WEBUI_SECRET_KEY` | from SSM | Session token signing |
+
+### Acceptance Criteria
+
+- [ ] A logged-in user can type a question and receive a non-empty answer within 30 seconds
+- [ ] Every answer includes at least one citation in `[Source: <filename>, Page <N>]` format
+- [ ] Citations reference documents that actually exist in the Team 0 processed S3 bucket
+- [ ] The answer content matches the cited source (no hallucination — answers are grounded)
+- [ ] Asking a question with no matching documents returns "I couldn't find relevant documents" (not a hallucinated answer)
+- [ ] Response latency for a typical question is under 20 seconds end-to-end (KB retrieval + Claude generation)
+
+### Effort Estimate
+
+**Day 3 afternoon** — Open WebUI config (~1h); citation testing (~30min); demo prep (~30min)
+
+### Key Pitfalls
+
+- Open WebUI's native Bedrock integration may need a compatibility layer — if the built-in integration doesn't support `InvokeAgent`, write a small FastAPI proxy that accepts OpenAI-format requests, calls `InvokeAgent`, and returns the response in OpenAI format. Deploy as a second container in the ECS task definition
+- Citation links need presigned GET URLs from Team 0's S3 processed bucket — coordinate with Team 0 to expose a presigned-GET Lambda or use the existing presigned-PUT API Gateway with a GET variant
+- The Bedrock Agent adds ~2–5 seconds latency per retrieval hop — this is normal; inform users via a "Thinking..." indicator in the UI
+- If Claude returns `ThrottlingException`, implement exponential backoff in the proxy layer; the Bedrock on-demand throughput can be saturated by rapid testing
+
+---
+
+## Team 1 → Demo Readiness Checklist
+
+Run this before the final presentation:
 
 | Item | Command to verify | Status |
 |------|------------------|--------|
-| `bedrock_kb_id` output in state | `terraform output bedrock_kb_id` | |
-| At least 3 docs indexed | `aws bedrock-agent-runtime retrieve --knowledge-base-id <id> --retrieval-query '{"text":"test"}'` returns results | |
-| Metadata filter works | Add `filter: {"equals":{"key":"Industry","value":"Banking"}}` — only Banking docs returned | |
-| `landing_bucket_name` output | `terraform output landing_bucket_name` | |
-| S3 GetObject allowed for shim Lambda role | Confirm shim role ARN in landing bucket policy | |
-| Metadata schema keys match exactly | `Industry`, `Type`, `Project`, `Client`, `Topic` — case-sensitive | |
+| ECS service running | `aws ecs describe-services --cluster knowledge-base-cluster --services knowledge-base-open-webui` shows `runningCount: 1` | |
+| Cognito SSO working | Open `https://<alb_dns_name>` in browser → redirected to Microsoft login | |
+| Bedrock Agent prepared | `aws bedrock-agent get-agent --agent-id $(terraform output -raw bedrock_agent_id)` shows `PREPARED` | |
+| Agent returns citations | `aws bedrock-agent-runtime invoke-agent ...` returns `citations` array | |
+| ECR image pushed | `aws ecr list-images --repository-name knowledge-base-chat-frontend` shows `latest` tag | |
+| Open WebUI shows answers | Log in, ask "What banking documents do we have?" → cited answer appears | |
