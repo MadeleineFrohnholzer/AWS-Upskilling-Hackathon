@@ -149,10 +149,8 @@ jobs:
   apply-team1:
     name: "Apply: team1"
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team1 == 'true'
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team1 == 'true' && (needs.apply-shared.result == 'success' || needs.apply-shared.result == 'skipped')
     needs: [changes, apply-shared]
-    # Run even if apply-shared was skipped (no shared changes)
-    # but fail if apply-shared actually failed
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -171,7 +169,7 @@ jobs:
   apply-team2:
     name: "Apply: team2"
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team2 == 'true'
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team2 == 'true' && (needs.apply-shared.result == 'success' || needs.apply-shared.result == 'skipped')
     needs: [changes, apply-shared]
     steps:
       - uses: actions/checkout@v4
