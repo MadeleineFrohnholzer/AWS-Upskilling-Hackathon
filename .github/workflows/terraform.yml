@@ -171,7 +171,7 @@ jobs:
   apply-team1:
     name: "Apply: team1"
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team1 == 'true'
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team1 == 'true' && (needs.apply-team0.result == 'success' || needs.apply-team0.result == 'skipped')
     needs: [changes, apply-team0]
     steps:
       - uses: actions/checkout@v4

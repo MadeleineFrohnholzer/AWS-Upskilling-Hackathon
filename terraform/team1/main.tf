@@ -86,5 +86,5 @@ module "compute" {
 # - ALB target group + attach ECS service
 # - ALB listener rule (forward to target group)
 # - Bedrock Agent definition + tool-use schema
-# - Agent action group pointing to Team 1's KB
+# - Agent action group pointing to Team 0's KB
 # - HTTPS listener (needs ACM cert or use HTTP for hackathon)
