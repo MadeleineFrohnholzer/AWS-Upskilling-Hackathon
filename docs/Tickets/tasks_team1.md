@@ -150,10 +150,10 @@ output "documents_table_arn" {
 
 ### Acceptance Criteria
 
-- [ ] `terraform apply` creates the `knowledge-base-documents` table
-- [ ] GSI `industry-uploaded_at-index` exists and is ACTIVE
+- [x] `terraform apply` creates the `knowledge-base-documents` table
+- [x] GSI `industry-uploaded_at-index` exists and is ACTIVE
 - [ ] `aws dynamodb describe-table --table-name knowledge-base-documents` returns `TableStatus: ACTIVE`
-- [ ] S3 bucket policy on the processed bucket is applied — Bedrock service principal can read it
+- [x] S3 bucket policy on the processed bucket is applied — Bedrock service principal can read it
 - [ ] A manual `aws dynamodb put-item` with a test document record succeeds
 - [ ] Query by GSI: `aws dynamodb query --table-name knowledge-base-documents --index-name industry-uploaded_at-index --key-condition-expression "industry = :i" --expression-attribute-values '{":i":{"S":"Banking"}}'` returns results
 
@@ -474,12 +474,12 @@ output "api_endpoint" {
 
 ### Acceptance Criteria
 
-- [ ] `terraform apply` creates the Lambda, API Gateway, and IAM role
+- [x] `terraform apply` creates the Lambda, API Gateway, and IAM role
 - [ ] `aws lambda invoke --function-name knowledge-base-presign-url --payload '{"body":"{\"filename\":\"test.pdf\",\"industry\":\"Banking\",\"type\":\"PoC\"}"}' /tmp/out.json` returns `statusCode: 200`
 - [ ] The presigned URL in the response accepts a `curl -T test.pdf "<url>"` PUT request and the file appears in S3
 - [ ] DynamoDB shows a new item with `status: PENDING_UPLOAD` after calling the API
 - [ ] Calling with `"industry": "FakeIndustry"` returns `statusCode: 400`
-- [ ] API Gateway endpoint is not reachable from outside the VPC (returns connection refused or timeout from public internet)
+- [x] API Gateway endpoint is not reachable from outside the VPC (returns connection refused or timeout from public internet)
 - [ ] CloudWatch log group `/aws/lambda/knowledge-base-presign-url` receives logs on each invocation
 
 ### Effort Estimate
@@ -758,7 +758,7 @@ resource "aws_s3_bucket_notification" "landing_trigger" {
 - [ ] DynamoDB item transitions: `PENDING_UPLOAD → SIDECAR_CREATED → INDEXING`
 - [ ] CloudWatch logs for the sidecar Lambda show no errors
 - [ ] Uploading a file directly (bypassing the presigned-URL API) still triggers the Lambda; sidecar is created with default `Other`/`Other` values (graceful degradation)
-- [ ] Uploading a `.metadata.json` file directly does NOT trigger infinite recursion (Lambda skips sidecar files)
+- [x] Uploading a `.metadata.json` file directly does NOT trigger infinite recursion (Lambda skips sidecar files)
 - [ ] Once M0-04 is deployed, a Bedrock ingestion job starts automatically after each upload
 
 ### Effort Estimate
@@ -1004,13 +1004,13 @@ output "bedrock_data_source_id" {
 
 ### Acceptance Criteria
 
-- [ ] `terraform apply` creates KB, data source, vector store bucket, and all IAM roles
+- [x] `terraform apply` creates KB, data source, vector store bucket, and all IAM roles
 - [ ] `aws bedrock-agent get-knowledge-base --knowledge-base-id <id>` shows `status: ACTIVE`
 - [ ] Upload a test PDF through the presigned URL flow → sidecar is created → ingestion job starts
 - [ ] `aws bedrock-agent get-ingestion-job --knowledge-base-id <id> --data-source-id <ds> --ingestion-job-id <job>` shows `status: COMPLETE`
 - [ ] Test retrieval: `aws bedrock-agent-runtime retrieve --knowledge-base-id <id> --retrieval-query '{"text":"test query"}' --retrieval-configuration '{"vectorSearchConfiguration":{"numberOfResults":3}}'` returns results
 - [ ] Metadata-filtered retrieval works: add `filter: {"equals":{"key":"Industry","value":"Banking"}}` to the retrieve call — only Banking documents come back
-- [ ] `bedrock_kb_id` output is visible in Terraform state and can be read by Team 1 via `terraform_remote_state`
+- [x] `bedrock_kb_id` output is visible in Terraform state and can be read by Team 1 via `terraform_remote_state`
 
 ### Effort Estimate
 
@@ -1393,7 +1393,7 @@ variable "digest_recipient_email" {
 - [ ] `aws events put-events` or a manual Lambda test invocation sends the digest email successfully
 - [ ] Email arrives with correct subject and body (document counts per Industry/Type)
 - [ ] EventBridge rule shows next scheduled fire time in the console
-- [ ] CloudWatch dashboard `knowledge-base-team0` loads and shows Lambda invocation metrics
+- [x] CloudWatch dashboard `knowledge-base-team0` loads and shows Lambda invocation metrics
 - [ ] Triggering 1+ Lambda errors causes the `knowledge-base-presign-errors` alarm to enter `ALARM` state within 1 minute
 
 ### Effort Estimate

@@ -229,8 +229,8 @@ aws sts get-caller-identity --profile hackathon
 
 - [ ] All 6 participants can run `aws sts get-caller-identity --profile hackathon` successfully
 - [ ] Team 0 members cannot modify Team 1 resources (and vice versa) — test by attempting `aws ecs list-clusters --profile hackathon` from a Team 0 account
-- [ ] No participant has `AdministratorAccess` or root credentials
-- [ ] Each team can read the other's Terraform state (needed for `terraform_remote_state` data sources)
+- [x] No participant has `AdministratorAccess` or root credentials
+- [x] Each team can read the other's Terraform state (needed for `terraform_remote_state` data sources)
 - [ ] Terraform can assume the role and run `terraform plan` from each team's directory
 
 ### Effort Estimate
@@ -298,7 +298,7 @@ variable "region" {
 - [ ] `aws s3api get-bucket-versioning --bucket hackathon-tf-state-064453091991` returns `"Status": "Enabled"`
 - [ ] `aws dynamodb describe-table --table-name hackathon-tf-locks` returns `"TableStatus": "ACTIVE"`
 - [ ] `aws s3api get-bucket-encryption --bucket hackathon-tf-state-064453091991` shows SSE-KMS
-- [ ] Running `terraform init` in `terraform/team0/` succeeds (backend can be reached)
+- [x] Running `terraform init` in `terraform/team0/` succeeds (backend can be reached)
 
 ### Effort Estimate
 
@@ -481,7 +481,7 @@ done
 - [ ] Gateway endpoints (s3, dynamodb) appear in the private route table
 - [ ] `private_dns_enabled = true` on all interface endpoints — confirmed in describe output
 - [ ] DNS check: `bedrock-runtime.eu-central-1.amazonaws.com` resolves to a 10.x.x.x address from within VPC
-- [ ] `execute-api` endpoint ID appears in `terraform output endpoint_ids` — needed by Team 0's private API Gateway
+- [x] `execute-api` endpoint ID appears in `terraform output endpoint_ids` — needed by Team 0's private API Gateway
 
 ### Effort Estimate
 
@@ -588,7 +588,7 @@ output "alb_listener_arn" {
 - [ ] `aws elbv2 describe-listeners --load-balancer-arn <arn>` shows listeners on port 80 (and 443 if Option B)
 - [ ] Hitting the ALB DNS name from within the VPC returns HTTP 503 (not connection refused)
 - [ ] ALB is in private subnets — confirm `Scheme: internal` and subnets are the private ones
-- [ ] `terraform output alb_listener_arn` returns a non-empty ARN
+- [x] `terraform output alb_listener_arn` returns a non-empty ARN
 - [ ] `terraform output alb_dns_name` returns the ALB DNS name — share with Team 1 for Cognito callback URL
 
 ### Effort Estimate
@@ -765,8 +765,8 @@ Infrastructure
 Access
   [ ] All 6 participants have working AWS CLI profiles (aws sts get-caller-identity passes)
   [ ] GitHub repo accessible to all participants (clone + push permissions verified)
-  [ ] team0/ directory: terraform init succeeds for Team 0 member
-  [ ] team1/ directory: terraform init succeeds for Team 1 member
+  [x] team0/ directory: terraform init succeeds for Team 0 member
+  [x] team1/ directory: terraform init succeeds for Team 1 member
 
 Bedrock
   [ ] amazon.titan-embed-text-v2:0 — ACTIVE in eu-central-1
