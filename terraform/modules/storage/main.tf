@@ -142,36 +142,6 @@ resource "aws_dynamodb_table" "document_metadata" {
     type = "S"
   }
 
-  attribute {
-    name = "Project"
-    type = "S"
-  }
-
-  attribute {
-    name = "Client"
-    type = "S"
-  }
-
-  attribute {
-    name = "Topic"
-    type = "S"
-  }
-
-  attribute {
-    name = "UploadedBy"
-    type = "S"
-  }
-
-  attribute {
-    name = "UploadedAt"
-    type = "S"
-  }
-
-  attribute {
-    name = "Filename"
-    type = "S"
-  }
-
   tags = {
     Name        = "${var.project_name}-document-metadata"
     Environment = var.environment
