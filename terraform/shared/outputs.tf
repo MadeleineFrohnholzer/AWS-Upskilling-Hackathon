@@ -43,3 +43,22 @@ output "ecs_tasks_security_group_id" {
 output "endpoint_ids" {
   value = module.networking.endpoint_ids
 }
+
+output "alb_http_listener_arn" {
+  value = module.networking.alb_http_listener_arn
+}
+
+output "team1_developer_role_arn" {
+  description = "IAM role ARN for Team 1 participants"
+  value       = aws_iam_role.team1_developer.arn
+}
+
+output "team0_operator_role_arn" {
+  description = "IAM role ARN for Team 0 organizers"
+  value       = aws_iam_role.team0_operator.arn
+}
+
+output "aws_account_id" {
+  description = "AWS account ID"
+  value       = data.aws_caller_identity.current.account_id
+}

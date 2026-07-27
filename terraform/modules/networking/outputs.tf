@@ -57,7 +57,12 @@ output "alb_dns_name" {
 }
 
 output "alb_listener_arn" {
-  description = "ARN of the default HTTP listener (Team 2 adds rules here)"
+  description = "ARN of the HTTPS listener (Team 1 adds Cognito auth rules here)"
+  value       = aws_lb_listener.https.arn
+}
+
+output "alb_http_listener_arn" {
+  description = "ARN of the HTTP listener (port 80, returns 503 by default)"
   value       = aws_lb_listener.http.arn
 }
 
@@ -74,5 +79,7 @@ output "endpoint_ids" {
     ecr_dkr               = aws_vpc_endpoint.ecr_dkr.id
     logs                  = aws_vpc_endpoint.logs.id
     sts                   = aws_vpc_endpoint.sts.id
+    "execute-api"         = aws_vpc_endpoint.execute_api.id
+    ssm                   = aws_vpc_endpoint.ssm.id
   }
 }

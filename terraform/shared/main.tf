@@ -12,6 +12,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 
   backend "s3" {
@@ -34,6 +38,100 @@ provider "aws" {
     }
   }
 }
+
+# =============================================================================
+# Current account identity (used in IAM trust policies)
+# =============================================================================
+data "aws_caller_identity" "current" {}
+
+# =============================================================================
+# IAM Participant Roles
+# =============================================================================
+
+resource "aws_iam_role" "team1_developer" {
+  name = "hackathon-team1-developer"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = { Name = "hackathon-team1-developer" }
+}
+
+resource "aws_iam_role_policy" "team1_developer" {
+  name = "team1-scoped-access"
+  role = aws_iam_role.team1_developer.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team1/*"
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject"]
+        Resource = [
+          "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/shared/*",
+          "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team2/*"
+        ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
+        Resource = "arn:aws:dynamodb:eu-central-1:${data.aws_caller_identity.current.account_id}:table/hackathon-tf-locks"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:*", "lambda:*", "apigateway:*", "dynamodb:*", "bedrock:*", "bedrock-agent:*",
+                    "iam:PassRole", "iam:CreateRole", "iam:PutRolePolicy", "iam:AttachRolePolicy",
+                    "logs:*", "events:*", "ses:*", "sns:*"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ec2:Describe*", "elasticloadbalancing:Describe*"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "team0_operator" {
+  name = "hackathon-team0-operator"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = { Name = "hackathon-team0-operator" }
+}
+
+resource "aws_iam_role_policy_attachment" "team0_admin" {
+  role       = aws_iam_role.team0_operator.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+
+# =============================================================================
+# Networking Module
+# =============================================================================
 
 module "networking" {
   source = "../modules/networking"

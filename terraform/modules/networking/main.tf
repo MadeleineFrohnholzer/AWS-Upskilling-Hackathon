@@ -385,6 +385,82 @@ resource "aws_security_group" "lambda" {
 }
 
 # Security group for ECS tasks
+# API Gateway private endpoint (Team 1 private REST API)
+resource "aws_vpc_endpoint" "execute_api" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.region}.execute-api"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-execute-api-endpoint"
+  }
+}
+
+# SSM Parameter Store (Team 2 Open WebUI secret key)
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.region}.ssm"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-ssm-endpoint"
+  }
+}
+
+# =============================================================================
+# HTTPS LISTENER — self-signed certificate (acceptable for internal/hackathon)
+# =============================================================================
+
+resource "tls_private_key" "alb" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+resource "tls_self_signed_cert" "alb" {
+  private_key_pem = tls_private_key.alb.private_key_pem
+
+  subject {
+    common_name  = aws_lb.internal.dns_name
+    organization = "Accenture BG Hackathon"
+  }
+
+  validity_period_hours = 168 # 7 days
+
+  allowed_uses = ["key_encipherment", "digital_signature", "server_auth"]
+}
+
+resource "aws_acm_certificate" "alb" {
+  private_key      = tls_private_key.alb.private_key_pem
+  certificate_body = tls_self_signed_cert.alb.cert_pem
+}
+
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.internal.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate.alb.arn
+
+  default_action {
+    type = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Service not yet configured"
+      status_code  = "503"
+    }
+  }
+}
+
+# =============================================================================
+# BASELINE SECURITY GROUPS
+# =============================================================================
+
 resource "aws_security_group" "ecs_tasks" {
   name_prefix = "${var.project_name}-ecs-"
   vpc_id      = aws_vpc.main.id
