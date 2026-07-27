@@ -122,3 +122,58 @@ resource "aws_dynamodb_table" "feedback" {
     Environment = var.environment
   }
 }
+
+# -----------------------------------------------------------------------------
+# DynamoDB: document-metadata Table
+# -----------------------------------------------------------------------------
+resource "aws_dynamodb_table" "document_metadata" {
+  name         = "${var.project_name}-document-metadata"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "Industry"
+  range_key    = "Type"
+
+  attribute {
+    name = "Industry"
+    type = "S"
+  }
+
+  attribute {
+    name = "Type"
+    type = "S"
+  }
+
+  attribute {
+    name = "Project"
+    type = "S"
+  }
+
+  attribute {
+    name = "Client"
+    type = "S"
+  }
+
+  attribute {
+    name = "Topic"
+    type = "S"
+  }
+
+  attribute {
+    name = "UploadedBy"
+    type = "S"
+  }
+
+  attribute {
+    name = "UploadedAt"
+    type = "S"
+  }
+
+  attribute {
+    name = "Filename"
+    type = "S"
+  }
+
+  tags = {
+    Name        = "${var.project_name}-document-metadata"
+    Environment = var.environment
+  }
+}
