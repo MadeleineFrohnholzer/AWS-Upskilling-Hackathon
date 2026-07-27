@@ -130,7 +130,7 @@ entra_client_secret = "<app-registration-client-secret>"
 
 ### Acceptance Criteria
 
-- [ ] `terraform apply` creates the Cognito User Pool, domain, Entra ID OIDC provider, and app client
+- [x] `terraform apply` creates the Cognito User Pool, domain, Entra ID OIDC provider, and app client
 - [ ] Entra ID redirect URI is registered in the Azure App Registration (matches `https://<cognito-domain>/oauth2/idpresponse`)
 - [ ] Visiting `https://<alb_dns_name>` redirects to the Accenture Microsoft login page
 - [ ] All 6 team members can authenticate with their `@accenture.com` credentials
@@ -522,8 +522,8 @@ resource "aws_bedrockagent_agent_alias" "live" {
   cat output.json | jq '.citations'
   ```
 - [ ] Citations reference actual document names from the landing/processed S3 bucket
-- [ ] `terraform output bedrock_agent_id` returns a non-empty ID
-- [ ] `terraform output bedrock_agent_alias_id` returns the `live` alias ID
+- [x] `terraform output bedrock_agent_id` returns a non-empty ID
+- [x] `terraform output bedrock_agent_alias_id` returns the `live` alias ID
 
 ### Effort Estimate
 

@@ -22,3 +22,7 @@ Thumbs.db
 # Environment
 .env
 *.pem
+
+# Terraform variable files (may contain secrets like Entra ID client secrets)
+*.tfvars
+*.tfvars.json
