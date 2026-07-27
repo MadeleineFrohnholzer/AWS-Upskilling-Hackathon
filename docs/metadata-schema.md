@@ -9,11 +9,10 @@ This schema defines the metadata fields stored alongside every document vector. 
 
 | Field | Type | Required | Values |
 |-------|------|----------|--------|
-| `Industry` | string | **Yes** | Banking, Automotive, Healthcare, Energy, Retail, Technology, Insurance, Telecom, Other |
-| `Type` | string | **Yes** | PoC, RFP, Case Study, Proposal, Architecture, Strategy, Report, Other |
-| `Project` | string | No | Internal project codename (e.g., Titan, Phoenix) |
+| `Industry` | string | **Yes** | FSI, PRD - Automotive, PRD - Life Science, PRD - Industrial, PRD - Consumer Goods, CMT, H&PS, RES, Other |
+| `DocumentType` | string | **Yes** | Architecture, Discussion Deck, RFP, Proposal, PoC, Case Study, Statement of Work (SOW), Assessment / Diagnostic, Roadmap, Runbook, Executive Summary, Point of View / Whitepaper, Other |
+| `UseCase` | string | No | DB Migration, Cloud Migration, Data & Analytics Platform, GenAI / AI Agent, Application Modernization, Cybersecurity, ERP Implementation, Infrastructure Optimization / FinOps, DevOps / Platform Engineering, Digital Transformation, Managed Services, Disaster Recovery / Resilience, Other |
 | `Client` | string | No | Client identifier for internal filtering |
-| `Topic` | string | No | Sales, Engineering, Strategy, Operations, HR, Finance, Other |
 | `UploadedBy` | string | No | Email or username of the uploader |
 | `UploadedAt` | ISO 8601 | No | Timestamp of upload |
 
@@ -23,10 +22,10 @@ Every uploaded document gets a `.metadata.json` sidecar:
 
 ```json
 {
-  "Industry": "Banking",
-  "Type": "Case Study",
-  "Project": "Titan",
-  "Topic": "Sales",
+  "Industry": "FSI",
+  "DocumentType": "Case Study",
+  "UseCase": "Cloud Migration",
+  "Client": "Acme Corp",
   "UploadedBy": "max.frohnholzer@accenture.com",
   "UploadedAt": "2026-07-16T10:30:00Z"
 }
@@ -40,8 +39,8 @@ When the Bedrock Agent queries the Knowledge Base, it passes metadata filters:
 {
   "filter": {
     "andAll": [
-      { "equals": { "key": "Industry", "value": "Banking" } },
-      { "equals": { "key": "Type", "value": "Case Study" } }
+      { "equals": { "key": "Industry", "value": "FSI" } },
+      { "equals": { "key": "DocumentType", "value": "Case Study" } }
     ]
   }
 }
@@ -49,7 +48,7 @@ When the Bedrock Agent queries the Knowledge Base, it passes metadata filters:
 
 ## Rules
 
-1. `Industry` and `Type` are mandatory — every document must have them
+1. `Industry` and `DocumentType` are mandatory — every document must have them
 2. Values must match the enum lists exactly (case-sensitive)
 3. If a document doesn't fit any enum value, use "Other"
 4. The schema can be extended during the hackathon if both teams agree
