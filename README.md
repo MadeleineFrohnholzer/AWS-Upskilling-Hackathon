@@ -64,3 +64,38 @@ Teams reference shared outputs via `terraform_remote_state`. No lock conflicts b
 - **Milestone 0 (Foundation):** Document ingestion, vectorization, metadata-aware storage, weekly digest
 - **Milestone 1 (Chat):** Authenticated chat interface with Bedrock Agent for grounded Q&A
 - **Shared:** VPC with PrivateLink endpoints, internal ALB, baseline security groups
+
+## CI/CD Workflow
+
+```mermaid
+flowchart LR
+    subgraph PR ["Pull Request"]
+        A[Push branch] --> B[Open PR to main]
+        B --> C{Files changed?}
+        C -->|terraform/shared/**| D[Plan: shared]
+        C -->|terraform/team1/**| E[Plan: team1]
+        C -->|terraform/team2/**| F[Plan: team2]
+        D --> G[Post plan as PR comment]
+        E --> G
+        F --> G
+    end
+
+    subgraph Merge ["Merge to main"]
+        H[PR merged] --> I{Files changed?}
+        I -->|terraform/shared/**| J[Apply: shared]
+        I -->|terraform/team1/**| K[Apply: team1]
+        I -->|terraform/team2/**| L[Apply: team2]
+        J --> K
+        J --> L
+    end
+
+    PR --> Merge
+```
+
+**Rules:**
+- Nobody pushes directly to `main` — always via PR
+- `terraform plan` runs automatically on every PR (read-only, safe)
+- `terraform apply` only runs after merge to `main`
+- Apply order: shared first, then team1/team2 in parallel
+- Only the directories that changed get planned/applied
+- Changes to `terraform/shared/` should only be merged by organizers
