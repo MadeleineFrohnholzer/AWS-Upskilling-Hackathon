@@ -4,7 +4,7 @@
 
 | Team | Focus | Members | Owns |
 |------|-------|---------|------|
-| **Team 1 — Foundation / Ingestion (M0)** | Upload → Indexed Vectors | Aigul, Zoltan, Harmen | S3, Lambda, Bedrock KB, DynamoDB, EventBridge, SES |
+| **Team 1 — Foundation / Ingestion (M0)** | Upload → Indexed Vectors | Aigul, Zoltan, Sandro | S3, Lambda, Bedrock KB, DynamoDB, EventBridge, SES |
 | **Team 2 — Access / Knowledge App (M1)** | Login → Cited Answer | Nikos, Yildrim, Nicolas | Cognito, ECS Fargate, Bedrock Agent, ALB integration |
 
 > **Shared infrastructure** (VPC, networking, ALB skeleton) is pre-provisioned before Day 1. Both teams consume it via `terraform_remote_state`.
