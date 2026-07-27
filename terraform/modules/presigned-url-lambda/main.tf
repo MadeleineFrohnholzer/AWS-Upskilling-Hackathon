@@ -12,7 +12,7 @@ locals {
 # ── IAM ──────────────────────────────────────────────────────────────────────
 
 resource "aws_iam_role" "lambda" {
-  name = "${local.function_name}-role"
+  name = "platform-${local.function_name}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -26,7 +26,7 @@ resource "aws_iam_role" "lambda" {
 
 # Grants CloudWatch Logs write + VPC ENI management
 resource "aws_iam_role_policy_attachment" "vpc_execution" {
-  role       = aws_iam_role.lambda.name
+  role       = aws_iam_role.lambda.id
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
