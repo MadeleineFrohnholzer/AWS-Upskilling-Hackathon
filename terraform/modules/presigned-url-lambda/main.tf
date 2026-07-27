@@ -26,7 +26,7 @@ resource "aws_iam_role" "lambda" {
 
 # Grants CloudWatch Logs write + VPC ENI management
 resource "aws_iam_role_policy_attachment" "vpc_execution" {
-  role       = aws_iam_role.lambda.id
+  role       = aws_iam_role.lambda.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
