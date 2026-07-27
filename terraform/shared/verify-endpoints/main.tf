@@ -21,7 +21,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "hackathon-tf-state-REPLACE_WITH_ACCOUNT_ID"
+    bucket         = "hackathon-tf-state-064453091991"
     key            = "verify-endpoints/terraform.tfstate"
     region         = "eu-central-1"
     dynamodb_table = "hackathon-tf-locks"
@@ -46,7 +46,7 @@ provider "aws" {
 data "terraform_remote_state" "shared" {
   backend = "s3"
   config = {
-    bucket = "hackathon-tf-state-REPLACE_WITH_ACCOUNT_ID"
+    bucket = "hackathon-tf-state-064453091991"
     key    = "shared/terraform.tfstate"
     region = "eu-central-1"
   }
@@ -62,7 +62,7 @@ locals {
 # IAM Role for verification Lambda
 # -----------------------------------------------------------------------------
 resource "aws_iam_role" "verify_lambda" {
-  name = "${var.project_name}-verify-endpoints"
+  name = "platform-${var.project_name}-verify-endpoints"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

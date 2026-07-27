@@ -76,8 +76,8 @@ The remote state backend (S3 bucket + DynamoDB lock table) will be provisioned b
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "hackathon-tf-state-<account-id>"
-    key            = "<squad-name>/terraform.tfstate"
+    bucket         = "hackathon-tf-state-064453091991"
+    key            = "<team1|team2>/terraform.tfstate"
     region         = "eu-central-1"
     dynamodb_table = "hackathon-tf-locks"
     encrypt        = true

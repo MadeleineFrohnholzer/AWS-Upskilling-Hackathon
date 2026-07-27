@@ -80,7 +80,7 @@ Since all AWS services are covered by PrivateLink endpoints, and container image
 data "terraform_remote_state" "shared" {
   backend = "s3"
   config = {
-    bucket = "hackathon-tf-state-<account-id>"
+    bucket = "hackathon-tf-state-064453091991"
     key    = "shared/terraform.tfstate"
     region = "eu-central-1"
   }

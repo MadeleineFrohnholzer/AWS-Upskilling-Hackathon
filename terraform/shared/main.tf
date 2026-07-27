@@ -15,7 +15,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "hackathon-tf-state-REPLACE_WITH_ACCOUNT_ID"
+    bucket         = "hackathon-tf-state-064453091991"
     key            = "shared/terraform.tfstate"
     region         = "eu-central-1"
     dynamodb_table = "hackathon-tf-locks"

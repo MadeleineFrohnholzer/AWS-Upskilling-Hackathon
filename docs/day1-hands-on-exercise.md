@@ -227,11 +227,10 @@ Try one or more of these:
 
 ## What's Next
 
-Now that you've seen the full cycle, you'll be working on real modules in your squad:
-- **Alpha:** VPC, subnets, security groups in `terraform/modules/networking/`
-- **Bravo:** S3 buckets, DynamoDB tables in `terraform/modules/storage/`
-- **Charlie:** ECS cluster, ALB, ECR in `terraform/modules/compute/`
+Now that you've seen the full cycle, you'll be working on real modules in your team:
+- **Team 1 (Aigul, Zoltan, Harmen):** S3 buckets, Lambda, Bedrock KB, DynamoDB in `terraform/team1/`
+- **Team 2 (Nikos, Yildrim, Nicolas):** Cognito, ECS cluster, Bedrock Agent in `terraform/team2/`
 
 The skeleton code is already in the repo. Your job is to understand it, extend it, and make it work.
 
-**Questions? Grab your squad lead or ask in the channel. Let's build.**
+**Questions? Ask in the channel. Let's build.**

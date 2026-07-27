@@ -51,7 +51,7 @@ A 4-day intensive hackathon to build an enterprise AI knowledge base on AWS usin
 ## State Layout
 
 ```
-S3: hackathon-tf-state-<account-id>/
+S3: hackathon-tf-state-064453091991/
 ├── shared/terraform.tfstate   ← VPC, endpoints, ALB (pre-provisioned)
 ├── team1/terraform.tfstate    ← Team 1 resources
 └── team2/terraform.tfstate    ← Team 2 resources
