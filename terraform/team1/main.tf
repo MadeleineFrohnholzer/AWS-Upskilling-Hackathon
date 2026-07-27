@@ -2,6 +2,7 @@
 # Team 1 — Foundation / Ingestion (Milestone 0)
 # =============================================================================
 # Owns: S3, Lambda, API Gateway, Bedrock KB, DynamoDB, EventBridge, SES
+# CI test: this comment triggers the plan job
 
 terraform {
   required_version = ">= 1.7.0"
