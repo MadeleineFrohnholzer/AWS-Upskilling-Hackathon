@@ -11,6 +11,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
   }
 
   backend "s3" {
@@ -372,45 +376,87 @@ resource "aws_s3_bucket_notification" "landing_trigger" {
 }
 
 # =============================================================================
-# M0-04 — S3 Vector Store + Bedrock Knowledge Base
+# M0-04 — OpenSearch Serverless Vector Store + Bedrock Knowledge Base
 # =============================================================================
 
-resource "aws_s3_bucket" "vector_store" {
-  bucket_prefix = "${var.project_name}-vectors-"
-  tags          = { Name = "${var.project_name}-vectors" }
+# ── OpenSearch Serverless security policies ──────────────────────────────────
+
+resource "aws_opensearchserverless_security_policy" "encryption" {
+  name        = "${var.project_name}-enc"
+  type        = "encryption"
+  description = "KMS encryption for vector collection"
+  policy = jsonencode({
+    Rules = [{ Resource = ["collection/${var.project_name}-vectors"], ResourceType = "collection" }]
+    AWSOwnedKey = true
+  })
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "vector_store" {
-  bucket = aws_s3_bucket.vector_store.id
-  rule {
-    apply_server_side_encryption_by_default { sse_algorithm = "aws:kms" }
+resource "aws_opensearchserverless_security_policy" "network" {
+  name        = "${var.project_name}-net"
+  type        = "network"
+  description = "VPC access for vector collection"
+  policy = jsonencode([{
+    Rules = [
+      { Resource = ["collection/${var.project_name}-vectors"], ResourceType = "collection" },
+      { Resource = ["dashboards/default"],                     ResourceType = "dashboard" }
+    ]
+    AllowFromPublic = false
+    SourceVPCEs     = [data.terraform_remote_state.shared.outputs.endpoint_ids["execute-api"]]
+  }])
+}
+
+resource "aws_opensearchserverless_access_policy" "bedrock_kb" {
+  name        = "${var.project_name}-kb-access"
+  type        = "data"
+  description = "Allow Bedrock KB service role to read/write the vector index"
+  policy = jsonencode([{
+    Rules = [
+      {
+        Resource     = ["collection/${var.project_name}-vectors"]
+        Permission   = ["aoss:CreateCollectionItems", "aoss:DeleteCollectionItems",
+                        "aoss:UpdateCollectionItems", "aoss:DescribeCollectionItems"]
+        ResourceType = "collection"
+      },
+      {
+        Resource     = ["index/${var.project_name}-vectors/*"]
+        Permission   = ["aoss:CreateIndex", "aoss:DeleteIndex", "aoss:UpdateIndex",
+                        "aoss:DescribeIndex", "aoss:ReadDocument", "aoss:WriteDocument"]
+        ResourceType = "index"
+      }
+    ]
+    Principal = [aws_iam_role.bedrock_kb.arn]
+  }])
+}
+
+resource "aws_opensearchserverless_collection" "vectors" {
+  name = "${var.project_name}-vectors"
+  type = "VECTORSEARCH"
+
+  depends_on = [
+    aws_opensearchserverless_security_policy.encryption,
+    aws_opensearchserverless_security_policy.network,
+    aws_opensearchserverless_access_policy.bedrock_kb,
+  ]
+
+  tags = { Name = "${var.project_name}-vectors" }
+}
+
+# ── Create the knn vector index (runs once after collection is ACTIVE) ────────
+
+resource "null_resource" "opensearch_index" {
+  triggers = { collection_endpoint = aws_opensearchserverless_collection.vectors.collection_endpoint }
+
+  provisioner "local-exec" {
+    command = "python3 ${path.module}/scripts/create_opensearch_index.py"
+    environment = {
+      COLLECTION_ENDPOINT = aws_opensearchserverless_collection.vectors.collection_endpoint
+      AWS_REGION          = var.region
+      INDEX_NAME          = "bedrock-knowledge-base-default-index"
+    }
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "vector_store" {
-  bucket                  = aws_s3_bucket.vector_store.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket_policy" "vector_store_bedrock" {
-  bucket = aws_s3_bucket.vector_store.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "bedrock.amazonaws.com" }
-      Action    = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
-      Resource  = [aws_s3_bucket.vector_store.arn, "${aws_s3_bucket.vector_store.arn}/*"]
-      Condition = {
-        StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
-      }
-    }]
-  })
-}
+# ── IAM role for Bedrock KB ───────────────────────────────────────────────────
 
 resource "aws_iam_role" "bedrock_kb" {
   name = "${var.project_name}-bedrock-kb-role"
@@ -447,12 +493,14 @@ resource "aws_iam_role_policy" "bedrock_kb" {
       },
       {
         Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
-        Resource = [aws_s3_bucket.vector_store.arn, "${aws_s3_bucket.vector_store.arn}/*"]
+        Action   = ["aoss:APIAccessAll"]
+        Resource = aws_opensearchserverless_collection.vectors.arn
       }
     ]
   })
 }
+
+# ── Bedrock Knowledge Base ────────────────────────────────────────────────────
 
 resource "aws_bedrockagent_knowledge_base" "main" {
   name     = "${var.project_name}-knowledge-base"
@@ -466,11 +514,19 @@ resource "aws_bedrockagent_knowledge_base" "main" {
   }
 
   storage_configuration {
-    type = "S3"
-    s3_configuration {
-      bucket_arn = aws_s3_bucket.vector_store.arn
+    type = "OPENSEARCH_SERVERLESS"
+    opensearch_serverless_configuration {
+      collection_arn    = aws_opensearchserverless_collection.vectors.arn
+      vector_index_name = "bedrock-knowledge-base-default-index"
+      field_mapping {
+        vector_field   = "bedrock-knowledge-base-default-vector"
+        text_field     = "AMAZON_BEDROCK_TEXT_CHUNK"
+        metadata_field = "AMAZON_BEDROCK_METADATA"
+      }
     }
   }
+
+  depends_on = [null_resource.opensearch_index]
 
   tags = { Name = "${var.project_name}-knowledge-base" }
 }

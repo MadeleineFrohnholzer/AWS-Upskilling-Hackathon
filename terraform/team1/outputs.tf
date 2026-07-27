@@ -52,9 +52,14 @@ output "bedrock_data_source_id" {
   value       = aws_bedrockagent_data_source.processed.data_source_id
 }
 
-output "s3_vector_store_arn" {
-  description = "S3 Vector Store bucket ARN"
-  value       = aws_s3_bucket.vector_store.arn
+output "opensearch_collection_endpoint" {
+  description = "OpenSearch Serverless collection endpoint"
+  value       = aws_opensearchserverless_collection.vectors.collection_endpoint
+}
+
+output "opensearch_collection_arn" {
+  description = "OpenSearch Serverless collection ARN"
+  value       = aws_opensearchserverless_collection.vectors.arn
 }
 
 output "cloudwatch_dashboard_url" {
