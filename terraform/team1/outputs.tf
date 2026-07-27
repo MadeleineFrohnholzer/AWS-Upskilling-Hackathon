@@ -17,6 +17,11 @@ output "processed_bucket_id" {
   value       = module.storage.processed_bucket_id
 }
 
+output "presigned_url_lambda_name" {
+  description = "Presigned URL generator Lambda function name"
+  value       = module.presigned_url_lambda.lambda_function_name
+}
+
 # TODO: Add these outputs as resources are created:
 # output "bedrock_kb_id" {
 #   description = "Bedrock Knowledge Base ID (Team 2 needs this for agent tool-use)"

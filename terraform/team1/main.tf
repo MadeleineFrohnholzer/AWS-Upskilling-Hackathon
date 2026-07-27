@@ -65,12 +65,26 @@ module "storage" {
 }
 
 # -----------------------------------------------------------------------------
+# Presigned URL Generator
+# -----------------------------------------------------------------------------
+module "presigned_url_lambda" {
+  source = "../modules/presigned-url-lambda"
+
+  landing_bucket_id            = module.storage.landing_bucket_id
+  landing_bucket_arn           = module.storage.landing_bucket_arn
+  subnet_ids                   = local.private_subnet_ids
+  security_group_id            = local.lambda_security_group_id
+  presigned_url_expiry_minutes = 30
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+# -----------------------------------------------------------------------------
 # TODO: Add these resources during the hackathon
 # -----------------------------------------------------------------------------
-# - Lambda: presigned URL generator
-# - Lambda: metadata sidecar creator
 # - Lambda: S3 event trigger handler
-# - API Gateway: REST API for upload endpoints
+# - API Gateway: HTTP API for upload endpoint (POST /upload → presigned_url_lambda)
 # - Bedrock Knowledge Base + data source
 # - EventBridge: weekly schedule rule
 # - Lambda: weekly digest generator
