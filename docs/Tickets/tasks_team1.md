@@ -1,9 +1,9 @@
 # M0 — Foundation & Ingestion: Detailed Ticket Specifications
 
-> **Milestone owner:** Team 1 (Aigul, Zoltan, Sandro)
+> **Milestone owner:** Team 0 (Aigul, Zoltan, Sandro)
 > **Definition of done:** A document can be uploaded, tagged, vectorized, and retrieved with metadata filters.
-> **State file:** `team1/terraform.tfstate` — backend bucket `hackathon-tf-state-064453091991`, region `eu-central-1`
-> **Critical outputs for Team 2:** `bedrock_kb_id`, `bedrock_kb_arn`, `s3_vector_store_arn`, `landing_bucket_name`
+> **State file:** `team0/terraform.tfstate` — backend bucket `hackathon-tf-state-064453091991`, region `eu-central-1`
+> **Critical outputs for Team 1:** `bedrock_kb_id`, `bedrock_kb_arn`, `s3_vector_store_arn`, `landing_bucket_name`
 
 ---
 
@@ -34,7 +34,7 @@ The existing `sessions` and `feedback` tables serve different purposes. We need 
 
 ### Terraform Resources
 
-Add to `terraform/modules/storage/main.tf` (or directly to `terraform/team1/main.tf`):
+Add to `terraform/modules/storage/main.tf` (or directly to `terraform/team0/main.tf`):
 
 ```hcl
 # -------------------------------------------------------
@@ -101,7 +101,7 @@ DynamoDB item schema (for reference — enforced by Lambda, not DynamoDB):
 }
 ```
 
-S3 bucket policy for Bedrock KB access (add to `terraform/team1/main.tf`):
+S3 bucket policy for Bedrock KB access (add to `terraform/team0/main.tf`):
 
 ```hcl
 # Allow Bedrock Knowledge Base service to read the processed bucket
@@ -134,7 +134,7 @@ resource "aws_s3_bucket_policy" "processed_bedrock" {
 data "aws_caller_identity" "current" {}
 ```
 
-Add outputs to `terraform/team1/outputs.tf`:
+Add outputs to `terraform/team0/outputs.tf`:
 
 ```hcl
 output "documents_table_name" {
@@ -196,7 +196,7 @@ Content-Type: application/json
 
 ### Lambda Implementation
 
-Create `terraform/team1/lambda/presigned_url/index.py`:
+Create `terraform/team0/lambda/presigned_url/index.py`:
 
 ```python
 import boto3
@@ -290,7 +290,7 @@ def _error(code, message):
 
 ### Terraform Resources
 
-Add to `terraform/team1/main.tf`:
+Add to `terraform/team0/main.tf`:
 
 ```hcl
 # -------------------------------------------------------
@@ -512,7 +512,7 @@ The Bedrock KB data source is configured to read `*.metadata.json` files as meta
 
 ### Lambda Implementation
 
-Create `terraform/team1/lambda/sidecar/index.py`:
+Create `terraform/team0/lambda/sidecar/index.py`:
 
 ```python
 import boto3
@@ -778,7 +778,7 @@ resource "aws_s3_bucket_notification" "landing_trigger" {
 
 ### Goal
 
-Create a Bedrock Knowledge Base backed by an S3 Vector Store. Configure Titan Text Embeddings V2 as the embedding model and the processed S3 bucket as the data source. This is the critical integration point: the `bedrock_kb_id` output is what Team 2 plugs into their agent.
+Create a Bedrock Knowledge Base backed by an S3 Vector Store. Configure Titan Text Embeddings V2 as the embedding model and the processed S3 bucket as the data source. This is the critical integration point: the `bedrock_kb_id` output is what Team 1 plugs into their agent.
 
 ### Pre-Step: Enable Model Access
 
@@ -973,11 +973,11 @@ BEDROCK_KB_ID = aws_bedrockagent_knowledge_base.main.id
 BEDROCK_DS_ID = aws_bedrockagent_data_source.processed.data_source_id
 ```
 
-### Critical Outputs (consumed by Team 2)
+### Critical Outputs (consumed by Team 1)
 
 ```hcl
 output "bedrock_kb_id" {
-  description = "Bedrock Knowledge Base ID — Team 2 plugs this into their Agent"
+  description = "Bedrock Knowledge Base ID — Team 1 plugs this into their Agent"
   value       = aws_bedrockagent_knowledge_base.main.id
 }
 
@@ -992,7 +992,7 @@ output "s3_vector_store_arn" {
 }
 
 output "landing_bucket_name" {
-  description = "Landing bucket name (for presigned URL generation and Team 2 citation links)"
+  description = "Landing bucket name (for presigned URL generation and Team 1 citation links)"
   value       = module.storage.landing_bucket_id
 }
 
@@ -1010,7 +1010,7 @@ output "bedrock_data_source_id" {
 - [ ] `aws bedrock-agent get-ingestion-job --knowledge-base-id <id> --data-source-id <ds> --ingestion-job-id <job>` shows `status: COMPLETE`
 - [ ] Test retrieval: `aws bedrock-agent-runtime retrieve --knowledge-base-id <id> --retrieval-query '{"text":"test query"}' --retrieval-configuration '{"vectorSearchConfiguration":{"numberOfResults":3}}'` returns results
 - [ ] Metadata-filtered retrieval works: add `filter: {"equals":{"key":"Industry","value":"Banking"}}` to the retrieve call — only Banking documents come back
-- [ ] `bedrock_kb_id` output is visible in Terraform state and can be read by Team 2 via `terraform_remote_state`
+- [ ] `bedrock_kb_id` output is visible in Terraform state and can be read by Team 1 via `terraform_remote_state`
 
 ### Effort Estimate
 
@@ -1067,7 +1067,7 @@ Sent automatically by the AABG Knowledge Platform.
 
 ### Lambda Implementation
 
-Create `terraform/team1/lambda/digest/index.py`:
+Create `terraform/team0/lambda/digest/index.py`:
 
 ```python
 import boto3
@@ -1326,7 +1326,7 @@ resource "aws_cloudwatch_metric_alarm" "api_latency" {
 # CloudWatch Dashboard
 # -------------------------------------------------------
 resource "aws_cloudwatch_dashboard" "main" {
-  dashboard_name = "${var.project_name}-team1"
+  dashboard_name = "${var.project_name}-team0"
 
   dashboard_body = jsonencode({
     widgets = [
@@ -1393,7 +1393,7 @@ variable "digest_recipient_email" {
 - [ ] `aws events put-events` or a manual Lambda test invocation sends the digest email successfully
 - [ ] Email arrives with correct subject and body (document counts per Industry/Type)
 - [ ] EventBridge rule shows next scheduled fire time in the console
-- [ ] CloudWatch dashboard `knowledge-base-team1` loads and shows Lambda invocation metrics
+- [ ] CloudWatch dashboard `knowledge-base-team0` loads and shows Lambda invocation metrics
 - [ ] Triggering 1+ Lambda errors causes the `knowledge-base-presign-errors` alarm to enter `ALARM` state within 1 minute
 
 ### Effort Estimate
@@ -1409,9 +1409,9 @@ variable "digest_recipient_email" {
 
 ---
 
-## Team 1 → Team 2 Handoff Checklist
+## Team 0 → Team 1 Handoff Checklist
 
-Run this before Day 3 afternoon so Team 2 can finish their Bedrock Agent:
+Run this before Day 3 afternoon so Team 1 can finish their Bedrock Agent:
 
 | Item | Command to verify | Status |
 |------|------------------|--------|

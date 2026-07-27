@@ -2,8 +2,8 @@
 
 This schema defines the metadata fields stored alongside every document vector. Both teams MUST agree on this before implementation.
 
-**Team 1** writes metadata in this format during ingestion.
-**Team 2** filters by these fields during retrieval.
+**Team 0** writes metadata in this format during ingestion.
+**Team 1** filters by these fields during retrieval.
 
 ## Fields
 
@@ -32,7 +32,7 @@ Every uploaded document gets a `.metadata.json` sidecar:
 }
 ```
 
-## Usage in Retrieval (Team 2)
+## Usage in Retrieval (Team 1)
 
 When the Bedrock Agent queries the Knowledge Base, it passes metadata filters:
 

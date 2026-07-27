@@ -151,7 +151,7 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc" {
 }
 
 resource "aws_iam_role_policy" "lambda_permissions" {
-  name = "team1-lambda-permissions"
+  name = "team0-lambda-permissions"
   role = aws_iam_role.lambda_exec.id
 
   policy = jsonencode({
@@ -627,7 +627,7 @@ resource "aws_lambda_permission" "eventbridge_digest" {
 # =============================================================================
 
 resource "aws_sns_topic" "alarms" {
-  name = "${var.project_name}-team1-alarms"
+  name = "${var.project_name}-team0-alarms"
 }
 
 resource "aws_sns_topic_subscription" "alarm_email" {
@@ -719,7 +719,7 @@ resource "aws_cloudwatch_metric_alarm" "apigw_latency" {
 }
 
 resource "aws_cloudwatch_dashboard" "main" {
-  dashboard_name = "${var.project_name}-team1"
+  dashboard_name = "${var.project_name}-team0"
 
   dashboard_body = jsonencode({
     widgets = [

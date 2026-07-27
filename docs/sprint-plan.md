@@ -4,8 +4,8 @@
 
 | Team | Focus | Members | Owns |
 |------|-------|---------|------|
-| **Team 1 — Foundation / Ingestion (M0)** | Upload → Indexed Vectors | Aigul, Zoltan, Sandro | S3, Lambda, Bedrock KB, DynamoDB, EventBridge, SES |
-| **Team 2 — Access / Knowledge App (M1)** | Login → Cited Answer | Nikos, Yildrim, Nicolas | Cognito, ECS Fargate, Bedrock Agent, ALB integration |
+| **Team 0 — Foundation / Ingestion (M0)** | Upload → Indexed Vectors | Aigul, Zoltan, Sandro | S3, Lambda, Bedrock KB, DynamoDB, EventBridge, SES |
+| **Team 1 — Access / Knowledge App (M1)** | Login → Cited Answer | Nikos, Yildrim, Nicolas | Cognito, ECS Fargate, Bedrock Agent, ALB integration |
 
 > **Shared infrastructure** (VPC, networking, ALB skeleton) is pre-provisioned before Day 1. Both teams consume it via `terraform_remote_state`.
 
@@ -39,7 +39,7 @@ Both teams must agree on this **before** starting implementation. Define in `doc
 }
 ```
 
-Team 1 writes metadata in this format → Team 2 queries with these filter keys.
+Team 0 writes metadata in this format → Team 1 queries with these filter keys.
 
 ---
 
@@ -58,14 +58,14 @@ Team 1 writes metadata in this format → Team 2 queries with these filter keys.
 
 | Team | Tasks |
 |------|-------|
-| Team 1 | S3 landing bucket + processed bucket (encrypted, versioned), DynamoDB tables (metadata, sessions), IAM roles for Lambda |
-| Team 2 | Cognito User Pool + Entra ID federation, ECR repository, ECS cluster + task definition skeleton |
+| Team 0 | S3 landing bucket + processed bucket (encrypted, versioned), DynamoDB tables (metadata, sessions), IAM roles for Lambda |
+| Team 1 | Cognito User Pool + Entra ID federation, ECR repository, ECS cluster + task definition skeleton |
 
 ### Day 1 Deliverables
-- [ ] S3 buckets with encryption + public access block (Team 1)
-- [ ] DynamoDB tables provisioned (Team 1)
-- [ ] Cognito pool with Entra ID integration started (Team 2)
-- [ ] ECS cluster + ECR repo created (Team 2)
+- [ ] S3 buckets with encryption + public access block (Team 0)
+- [ ] DynamoDB tables provisioned (Team 0)
+- [ ] Cognito pool with Entra ID integration started (Team 1)
+- [ ] ECS cluster + ECR repo created (Team 1)
 - [ ] All infra in Terraform, per-team state files working
 
 ---
@@ -76,21 +76,21 @@ Team 1 writes metadata in this format → Team 2 queries with these filter keys.
 
 | Team | Tasks |
 |------|-------|
-| Team 1 | Lambda: presigned URL generator, Lambda: metadata sidecar creator, API Gateway REST endpoints |
-| Team 2 | Dockerfile for Open WebUI (or equivalent), push to ECR, ECS Fargate service definition |
+| Team 0 | Lambda: presigned URL generator, Lambda: metadata sidecar creator, API Gateway REST endpoints |
+| Team 1 | Dockerfile for Open WebUI (or equivalent), push to ECR, ECS Fargate service definition |
 
 ### Afternoon (13:00–17:00)
 
 | Team | Tasks |
 |------|-------|
-| Team 1 | S3 event notification → Lambda trigger, Bedrock Knowledge Base resource, data source config, embedding pipeline |
-| Team 2 | ECS service running on Fargate, attach to ALB target group, health checks, HTTPS listener |
+| Team 0 | S3 event notification → Lambda trigger, Bedrock Knowledge Base resource, data source config, embedding pipeline |
+| Team 1 | ECS service running on Fargate, attach to ALB target group, health checks, HTTPS listener |
 
 ### Day 2 Deliverables
-- [ ] Working upload flow: presigned URL → S3 → metadata sidecar (Team 1)
-- [ ] Bedrock KB configured + first ingestion test (Team 1)
-- [ ] Chat container running on Fargate behind ALB (Team 2)
-- [ ] API Gateway endpoints live (Team 1)
+- [ ] Working upload flow: presigned URL → S3 → metadata sidecar (Team 0)
+- [ ] Bedrock KB configured + first ingestion test (Team 0)
+- [ ] Chat container running on Fargate behind ALB (Team 1)
+- [ ] API Gateway endpoints live (Team 0)
 
 ---
 
@@ -100,21 +100,21 @@ Team 1 writes metadata in this format → Team 2 queries with these filter keys.
 
 | Team | Tasks |
 |------|-------|
-| Team 1 | Bedrock KB ingestion testing with sample docs, vector store verification, metadata filter queries, fix chunking issues |
-| Team 2 | Bedrock Agent definition, tool-use schema for KB retrieval, system prompt design, metadata filter integration |
+| Team 0 | Bedrock KB ingestion testing with sample docs, vector store verification, metadata filter queries, fix chunking issues |
+| Team 1 | Bedrock Agent definition, tool-use schema for KB retrieval, system prompt design, metadata filter integration |
 
 ### Afternoon (13:00–17:00)
 
 | Team | Tasks |
 |------|-------|
-| Team 1 | EventBridge weekly schedule, SES identity verification, digest Lambda (query S3, format report), CloudWatch dashboards |
-| Team 2 | Agent ↔ Knowledge Base end-to-end test, citation rendering, error handling, auth flow verification (Cognito → ALB → ECS) |
+| Team 0 | EventBridge weekly schedule, SES identity verification, digest Lambda (query S3, format report), CloudWatch dashboards |
+| Team 1 | Agent ↔ Knowledge Base end-to-end test, citation rendering, error handling, auth flow verification (Cognito → ALB → ECS) |
 
 ### Day 3 Deliverables
-- [ ] Documents ingestible and searchable via Bedrock KB with metadata filtering (Team 1)
-- [ ] Weekly digest Lambda working (Team 1)
-- [ ] Bedrock Agent answering questions with source citations (Team 2)
-- [ ] Auth flow: Cognito → ALB → container working (Team 2)
+- [ ] Documents ingestible and searchable via Bedrock KB with metadata filtering (Team 0)
+- [ ] Weekly digest Lambda working (Team 0)
+- [ ] Bedrock Agent answering questions with source citations (Team 1)
+- [ ] Auth flow: Cognito → ALB → container working (Team 1)
 
 ---
 
@@ -124,7 +124,7 @@ Team 1 writes metadata in this format → Team 2 queries with these filter keys.
 
 | Activity | Who |
 |----------|-----|
-| Full integration: Upload docs (Team 1) → Query via chat (Team 2) → Cited answer | All |
+| Full integration: Upload docs (Team 0) → Query via chat (Team 1) → Cited answer | All |
 | Cross-team integration testing: metadata filter contract validation | All |
 | Bug fixing, edge cases, error handling | All |
 | Load real sample documents, verify metadata filtering works end-to-end | All |
@@ -151,20 +151,20 @@ Team 1 writes metadata in this format → Team 2 queries with these filter keys.
 The single integration boundary between teams:
 
 ```
-Team 1 OUTPUTS (via terraform_remote_state):
+Team 0 OUTPUTS (via terraform_remote_state):
   - bedrock_kb_id
   - bedrock_kb_arn
   - s3_vector_store_arn
   - landing_bucket_name (for upload URL generation)
 
-Team 2 CONSUMES:
+Team 1 CONSUMES:
   - Bedrock KB ID → used in Agent tool-use configuration
   - Metadata filter schema → used in retrieval queries
 
 Contract:
   - docs/metadata-schema.json defines the shared vocabulary
-  - Team 1 guarantees vectors are stored with these metadata keys
-  - Team 2 guarantees queries use only these metadata keys for filtering
+  - Team 0 guarantees vectors are stored with these metadata keys
+  - Team 1 guarantees queries use only these metadata keys for filtering
 ```
 
 ---
@@ -174,8 +174,8 @@ Contract:
 | State Key | Owner | Contents |
 |-----------|-------|----------|
 | `shared/terraform.tfstate` | Pre-provisioned | VPC, subnets, endpoints, ALB skeleton, base SGs |
-| `team1/terraform.tfstate` | Team 1 | S3 buckets, Lambda, API GW, Bedrock KB, DynamoDB, EventBridge, SES |
-| `team2/terraform.tfstate` | Team 2 | Cognito, ECS, ECR, Bedrock Agent, ALB target groups |
+| `team0/terraform.tfstate` | Team 0 | S3 buckets, Lambda, API GW, Bedrock KB, DynamoDB, EventBridge, SES |
+| `team1/terraform.tfstate` | Team 1 | Cognito, ECS, ECR, Bedrock Agent, ALB target groups |
 
 ---
 

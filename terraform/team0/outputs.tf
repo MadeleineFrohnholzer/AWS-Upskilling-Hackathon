@@ -38,7 +38,7 @@ output "api_endpoint" {
 }
 
 output "bedrock_kb_id" {
-  description = "Bedrock Knowledge Base ID — Team 0 plugs this into their Bedrock Agent tool-use config"
+  description = "Bedrock Knowledge Base ID — Team 1 plugs this into their Bedrock Agent tool-use config"
   value       = aws_bedrockagent_knowledge_base.main.id
 }
 
@@ -63,8 +63,8 @@ output "opensearch_collection_arn" {
 }
 
 output "cloudwatch_dashboard_url" {
-  description = "Direct link to the Team 1 CloudWatch dashboard"
-  value       = "https://${var.region}.console.aws.amazon.com/cloudwatch/home?region=${var.region}#dashboards:name=${var.project_name}-team1"
+  description = "Direct link to the Team 0 CloudWatch dashboard"
+  value       = "https://${var.region}.console.aws.amazon.com/cloudwatch/home?region=${var.region}#dashboards:name=${var.project_name}-team0"
 }
 
 output "alarm_sns_topic_arn" {

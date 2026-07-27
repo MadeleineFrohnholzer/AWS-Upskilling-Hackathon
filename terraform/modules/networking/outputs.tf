@@ -1,5 +1,5 @@
 # =============================================================================
-# Outputs — consumed by Team 1 and Team 2 via terraform_remote_state
+# Outputs — consumed by Team 0 and Team 1 via terraform_remote_state
 # =============================================================================
 
 # VPC
@@ -57,7 +57,7 @@ output "alb_dns_name" {
 }
 
 output "alb_listener_arn" {
-  description = "ARN of the HTTPS listener (Team 1 adds Cognito auth rules here)"
+  description = "ARN of the HTTPS listener (Team 1 adds Cognito auth listener rules here)"
   value       = aws_lb_listener.https.arn
 }
 

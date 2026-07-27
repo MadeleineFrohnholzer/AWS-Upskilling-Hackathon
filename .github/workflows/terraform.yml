@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       shared: ${{ steps.filter.outputs.shared }}
+      team0: ${{ steps.filter.outputs.team0 }}
       team1: ${{ steps.filter.outputs.team1 }}
-      team2: ${{ steps.filter.outputs.team2 }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -36,11 +36,11 @@ jobs:
             shared:
               - 'terraform/shared/**'
               - 'terraform/modules/networking/**'
+            team0:
+              - 'terraform/team0/**'
+              - 'terraform/modules/storage/**'
             team1:
               - 'terraform/team1/**'
-              - 'terraform/modules/storage/**'
-            team2:
-              - 'terraform/team2/**'
               - 'terraform/modules/compute/**'
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -57,12 +57,12 @@ jobs:
           - stack: shared
             dir: terraform/shared
             changed: ${{ needs.changes.outputs.shared }}
+          - stack: team0
+            dir: terraform/team0
+            changed: ${{ needs.changes.outputs.team0 }}
           - stack: team1
             dir: terraform/team1
             changed: ${{ needs.changes.outputs.team1 }}
-          - stack: team2
-            dir: terraform/team2
-            changed: ${{ needs.changes.outputs.team2 }}
       fail-fast: false
 
     steps:
@@ -124,7 +124,7 @@ jobs:
         run: exit 1
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Apply (on merge to main) — ordered: shared → team1 → team2
+  # Apply (on merge to main) — ordered: shared → team0 → team1
   # ─────────────────────────────────────────────────────────────────────────────
   apply-shared:
     name: "Apply: shared"
@@ -146,10 +146,10 @@ jobs:
           terraform init -input=false
           terraform apply -input=false -auto-approve
 
-  apply-team1:
-    name: "Apply: team1"
+  apply-team0:
+    name: "Apply: team0"
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team1 == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team0 == 'true'
     needs: [changes, apply-shared]
     # Run even if apply-shared was skipped (no shared changes)
     # but fail if apply-shared actually failed
@@ -163,16 +163,16 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Init & Apply
-        working-directory: terraform/team1
+        working-directory: terraform/team0
         run: |
           terraform init -input=false
           terraform apply -input=false -auto-approve
 
-  apply-team2:
-    name: "Apply: team2"
+  apply-team1:
+    name: "Apply: team1"
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team2 == 'true'
-    needs: [changes, apply-shared]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team1 == 'true'
+    needs: [changes, apply-team0]
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -183,7 +183,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Init & Apply
-        working-directory: terraform/team2
+        working-directory: terraform/team1
         run: |
           terraform init -input=false
           terraform apply -input=false -auto-approve

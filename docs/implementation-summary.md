@@ -1,7 +1,7 @@
 # Implementation Summary — HackatonSolutions Branch
 
 > Branch: `HackatonSolutions`
-> Validated: `terraform validate` passes on both `shared` and `team1` configurations
+> Validated: `terraform validate` passes on both `shared` and `team0` configurations
 > AWS credentials not available locally — `terraform plan` shows credential error (expected); all config is syntactically valid
 
 ---
@@ -11,8 +11,8 @@
 | # | SHA | Scope | Description |
 |---|-----|-------|-------------|
 | 1 | `4736871` | Team 0 | feat(team0): implement shared infrastructure additions |
-| 2 | `2e6e882` | Team 1 | feat(team1): implement M0 Foundation & Ingestion milestone |
-| 3 | `bcdd663` | Team 1 | fix(team1): switch vector store to OpenSearch Serverless + add index script |
+| 2 | `2e6e882` | Team 0 | feat(team0): implement M0 Foundation & Ingestion milestone |
+| 3 | `bcdd663` | Team 0 | fix(team0): switch vector store to OpenSearch Serverless + add index script |
 
 ---
 
@@ -25,8 +25,8 @@
 | `terraform/modules/networking/main.tf` | +`execute-api` and `ssm` VPC Interface Endpoints |
 | `terraform/modules/networking/main.tf` | +HTTPS ALB listener (port 443) with self-signed TLS certificate |
 | `terraform/modules/networking/outputs.tf` | Updated `endpoint_ids` map with `execute-api` and `ssm` keys; added `alb_http_listener_arn` |
-| `terraform/shared/main.tf` | +`hashicorp/tls` provider; +`team0-operator` and `team1-developer` IAM roles |
-| `terraform/shared/outputs.tf` | +`team1_developer_role_arn`, `team0_operator_role_arn`, `aws_account_id`, `alb_http_listener_arn` |
+| `terraform/shared/main.tf` | +`hashicorp/tls` provider; +`team0-operator`, `team0-developer`, and `team1-developer` IAM roles |
+| `terraform/shared/outputs.tf` | +`team0_developer_role_arn`, `team1_developer_role_arn`, `team0_operator_role_arn`, `aws_account_id`, `alb_http_listener_arn` |
 
 ### Architecture Diagram
 
@@ -56,7 +56,7 @@ graph TB
     end
     subgraph "IAM"
         ROLE0["team0-operator\nAdministratorAccess"]
-        ROLE1["team1-developer\nScoped S3/Lambda/DDB/Bedrock"]
+        ROLE1["team0-developer\nScoped S3/Lambda/DDB/Bedrock"]
     end
     VPN["Corporate VPN\n10.0.0.0/8"] -->|HTTPS| ALB
     ALB --> SG_ECS
@@ -72,8 +72,8 @@ graph TB
 + tls_self_signed_cert.alb              (7-day validity, ALB DNS as CN)
 + aws_acm_certificate.alb               (imported self-signed cert)
 + aws_lb_listener.https                 (port 443, TLS13, default 503)
-+ aws_iam_role.team1_developer          (scoped access for hackathon participants)
-+ aws_iam_role_policy.team1_developer
++ aws_iam_role.team0_developer          (scoped access for hackathon participants)
++ aws_iam_role_policy.team0_developer
 + aws_iam_role.team0_operator           (AdministratorAccess for organizers)
 + aws_iam_role_policy_attachment.team0_admin
 + data.aws_caller_identity.current
@@ -81,7 +81,7 @@ graph TB
 
 ---
 
-## Team 1 — Foundation & Ingestion (M0)
+## Team 0 — Foundation & Ingestion (M0)
 
 ### What Was Implemented
 
@@ -141,7 +141,7 @@ graph LR
     end
 ```
 
-### New Resources — Team 1
+### New Resources — Team 0
 
 ```
 + aws_dynamodb_table.documents                         (GSI: industry-uploaded_at)
@@ -199,7 +199,7 @@ graph LR
 $ cd terraform/shared && terraform validate
 Success! The configuration is valid.
 
-$ cd terraform/team1 && terraform validate
+$ cd terraform/team0 && terraform validate
 Success! The configuration is valid.
 ```
 
@@ -232,10 +232,10 @@ cd terraform/shared
 terraform init
 terraform plan -out=shared.tfplan
 
-# Team 1 plan (requires shared state to exist first)
-cd ../team1
+# Team 0 plan (requires shared state to exist first)
+cd ../team0
 terraform init
-terraform plan -out=team1.tfplan
+terraform plan -out=team0.tfplan
 ```
 
 Expected plan summary once credentials are available:
@@ -243,7 +243,7 @@ Expected plan summary once credentials are available:
 | Stack | Resources to add | Resources to change | Resources to destroy |
 |-------|-----------------|--------------------|--------------------|
 | `shared` | ~10 new (endpoints, HTTPS listener, IAM roles) | 1 (ALB listener arn output update) | 0 |
-| `team1` | ~38 new | 0 | 0 |
+| `team0` | ~38 new | 0 | 0 |
 
 ---
 
@@ -269,12 +269,12 @@ terraform/
 │       ├── main.tf          ← +execute-api endpoint, +ssm endpoint, +HTTPS listener, +TLS cert
 │       └── outputs.tf       ← updated endpoint_ids map, +alb_http_listener_arn
 ├── shared/
-│   ├── main.tf              ← +tls provider, +IAM roles (team0-operator, team1-developer)
+│   ├── main.tf              ← +tls provider, +IAM roles (team0-operator, team0-developer, team1-developer)
 │   └── outputs.tf           ← +role ARNs, +account_id, +http_listener_arn
-└── team1/
+└── team0/
     ├── main.tf              ← full M0 implementation (38 resources)
     ├── variables.tf         ← +digest_sender_email, +digest_recipient_email
-    ├── outputs.tf           ← all M0 outputs including bedrock_kb_id for Team 0
+    ├── outputs.tf           ← all M0 outputs including bedrock_kb_id for Team 1
     ├── lambda/
     │   ├── presigned_url/index.py   ← upload URL generator
     │   ├── sidecar/index.py         ← S3-triggered metadata sidecar creator

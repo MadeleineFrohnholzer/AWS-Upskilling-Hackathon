@@ -1,4 +1,4 @@
-# These outputs are consumed by Team 1 and Team 2 via terraform_remote_state
+# These outputs are consumed by Team 0 and Team 1 via terraform_remote_state
 
 output "vpc_id" {
   value = module.networking.vpc_id
@@ -48,8 +48,13 @@ output "alb_http_listener_arn" {
   value = module.networking.alb_http_listener_arn
 }
 
+output "team0_developer_role_arn" {
+  description = "IAM role ARN for Team 0 participants (Foundation / Ingestion)"
+  value       = aws_iam_role.team0_developer.arn
+}
+
 output "team1_developer_role_arn" {
-  description = "IAM role ARN for Team 1 participants"
+  description = "IAM role ARN for Team 1 participants (Access / Knowledge App)"
   value       = aws_iam_role.team1_developer.arn
 }
 

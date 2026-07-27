@@ -2,7 +2,7 @@
 # Networking Module — VPC, Subnets, VPC Endpoints, ALB Skeleton
 # =============================================================================
 # Pre-provisioned shared infrastructure for both teams.
-# Outputs are consumed by Team 1 and Team 2 via terraform_remote_state.
+# Outputs are consumed by Team 0 and Team 1 via terraform_remote_state.
 
 # -----------------------------------------------------------------------------
 # VPC
@@ -290,7 +290,7 @@ resource "aws_vpc_endpoint" "sts" {
 }
 
 # =============================================================================
-# INTERNAL ALB (Skeleton — Team 2 attaches target groups)
+# INTERNAL ALB (Skeleton — Team 1 attaches target groups)
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -345,7 +345,7 @@ resource "aws_lb" "internal" {
   }
 }
 
-# Default listener (returns 503 until Team 2 adds their target group)
+# Default listener (returns 503 until Team 1 adds their target group)
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.internal.arn
   port              = 80
@@ -385,7 +385,7 @@ resource "aws_security_group" "lambda" {
 }
 
 # Security group for ECS tasks
-# API Gateway private endpoint (Team 1 private REST API)
+# API Gateway private endpoint (Team 0 private REST API)
 resource "aws_vpc_endpoint" "execute_api" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.region}.execute-api"
@@ -399,7 +399,7 @@ resource "aws_vpc_endpoint" "execute_api" {
   }
 }
 
-# SSM Parameter Store (Team 2 Open WebUI secret key)
+# SSM Parameter Store (Team 1 Open WebUI secret key)
 resource "aws_vpc_endpoint" "ssm" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.region}.ssm"

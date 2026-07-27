@@ -17,7 +17,7 @@ Pre-provisioned VPC, networking, VPC endpoints, and ALB skeleton. Both teams con
 | ECR API + Docker Interface Endpoints | Fargate image pulls via PrivateLink |
 | CloudWatch Logs Interface Endpoint | Log shipping via PrivateLink |
 | STS Interface Endpoint | Role assumption via PrivateLink |
-| Internal ALB (skeleton) | Empty target groups, Team 2 attaches service |
+| Internal ALB (skeleton) | Empty target groups, Team 1 attaches service |
 | Baseline Security Groups | Lambda SG, ECS SG, ALB SG, VPCE SG |
 
 ## Provisioning Order

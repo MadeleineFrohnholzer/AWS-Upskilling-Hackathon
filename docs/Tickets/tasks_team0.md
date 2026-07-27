@@ -17,21 +17,21 @@ Grant all hackathon participants access to the AWS account with least-privilege 
 
 | Name | Email | Team | Role |
 |------|-------|------|------|
-| Aigul | aigul@accenture.com | Team 1 | team1-developer |
-| Zoltan | zoltan.szilagyi@accenture.com | Team 1 | team1-developer |
-| Sandro | sandro@accenture.com | Team 1 | team1-developer |
-| Nikos | nikos@accenture.com | Team 2 | team2-developer |
-| Yildrim | yildrim@accenture.com | Team 2 | team2-developer |
-| Nicolas | nicolas@accenture.com | Team 2 | team2-developer |
+| Aigul | aigul@accenture.com | Team 0 | team0-developer |
+| Zoltan | zoltan.szilagyi@accenture.com | Team 0 | team0-developer |
+| Sandro | sandro@accenture.com | Team 0 | team0-developer |
+| Nikos | nikos@accenture.com | Team 1 | team1-developer |
+| Yildrim | yildrim@accenture.com | Team 1 | team1-developer |
+| Nicolas | nicolas@accenture.com | Team 1 | team1-developer |
 
 ### Terraform Resources
 
 ```hcl
 # -------------------------------------------------------
-# Team 1 IAM Role — Foundation / Ingestion (M0)
+# Team 0 IAM Role — Foundation / Ingestion (M0)
 # -------------------------------------------------------
-resource "aws_iam_role" "team1_developer" {
-  name = "hackathon-team1-developer"
+resource "aws_iam_role" "team0_developer" {
+  name = "hackathon-team0-developer"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -43,9 +43,9 @@ resource "aws_iam_role" "team1_developer" {
   })
 }
 
-resource "aws_iam_role_policy" "team1_developer" {
-  name = "team1-scoped-access"
-  role = aws_iam_role.team1_developer.id
+resource "aws_iam_role_policy" "team0_developer" {
+  name = "team0-scoped-access"
+  role = aws_iam_role.team0_developer.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -54,14 +54,14 @@ resource "aws_iam_role_policy" "team1_developer" {
       {
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team1/*"
+        Resource = "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team0/*"
       },
       {
         Effect   = "Allow"
         Action   = ["s3:GetObject"]
         Resource = [
           "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/shared/*",
-          "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team2/*"
+          "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team1/*"
         ]
       },
       {
@@ -82,7 +82,7 @@ resource "aws_iam_role_policy" "team1_developer" {
                      "iam:PassRole", "logs:*", "events:*", "ses:*"]
         Resource  = "*"
         Condition = {
-          StringEquals = { "aws:ResourceTag/Team" = "team1-ingestion" }
+          StringEquals = { "aws:ResourceTag/Team" = "team0-ingestion" }
         }
       },
       # Allow creating tagged resources (tags checked at creation time)
@@ -109,10 +109,10 @@ resource "aws_iam_role_policy" "team1_developer" {
 }
 
 # -------------------------------------------------------
-# Team 2 IAM Role — Access / Knowledge App (M1)
+# Team 1 IAM Role — Access / Knowledge App (M1)
 # -------------------------------------------------------
-resource "aws_iam_role" "team2_developer" {
-  name = "hackathon-team2-developer"
+resource "aws_iam_role" "team1_developer" {
+  name = "hackathon-team1-developer"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -124,9 +124,9 @@ resource "aws_iam_role" "team2_developer" {
   })
 }
 
-resource "aws_iam_role_policy" "team2_developer" {
-  name = "team2-scoped-access"
-  role = aws_iam_role.team2_developer.id
+resource "aws_iam_role_policy" "team1_developer" {
+  name = "team1-scoped-access"
+  role = aws_iam_role.team1_developer.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -135,14 +135,14 @@ resource "aws_iam_role_policy" "team2_developer" {
       {
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team2/*"
+        Resource = "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team1/*"
       },
       {
         Effect   = "Allow"
         Action   = ["s3:GetObject"]
         Resource = [
           "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/shared/*",
-          "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team1/*"
+          "arn:aws:s3:::hackathon-tf-state-${data.aws_caller_identity.current.account_id}/team0/*"
         ]
       },
       {
@@ -165,7 +165,7 @@ resource "aws_iam_role_policy" "team2_developer" {
                     "lambda:*", "apigateway:*", "ssm:*", "secretsmanager:*", "logs:*"]
         Resource = "*"
         Condition = {
-          StringEquals = { "aws:ResourceTag/Team" = "team2-app" }
+          StringEquals = { "aws:ResourceTag/Team" = "team1-app" }
         }
       },
       # Allow creating tagged resources
@@ -193,7 +193,7 @@ data "aws_caller_identity" "current" {}
 If the account uses AWS IAM Identity Center (SSO):
 
 1. Go to IAM Identity Center → Users → Add each participant
-2. Create permission sets `team1-developer` and `team2-developer` with the policies above
+2. Create permission sets `team0-developer` and `team1-developer` with the policies above
 3. Assign participants to permission sets in the `eu-central-1` account
 4. Share the SSO start URL: `https://<org-id>.awsapps.com/start`
 
@@ -215,7 +215,7 @@ Participants add this to `~/.aws/config`:
 ```ini
 [profile hackathon]
 region = eu-central-1
-role_arn = arn:aws:iam::064453091991:role/hackathon-team1-developer  # or team2
+role_arn = arn:aws:iam::064453091991:role/hackathon-team0-developer  # or team1
 source_profile = default  # or sso, depending on auth method
 ```
 
@@ -228,7 +228,7 @@ aws sts get-caller-identity --profile hackathon
 ### Acceptance Criteria
 
 - [ ] All 6 participants can run `aws sts get-caller-identity --profile hackathon` successfully
-- [ ] Team 1 members cannot modify Team 2 resources (and vice versa) — test by attempting `aws ecs list-clusters --profile hackathon` from a Team 1 account
+- [ ] Team 0 members cannot modify Team 1 resources (and vice versa) — test by attempting `aws ecs list-clusters --profile hackathon` from a Team 0 account
 - [ ] No participant has `AdministratorAccess` or root credentials
 - [ ] Each team can read the other's Terraform state (needed for `terraform_remote_state` data sources)
 - [ ] Terraform can assume the role and run `terraform plan` from each team's directory
@@ -267,7 +267,7 @@ aws s3 ls | grep hackathon-tf-state
 aws dynamodb describe-table --table-name hackathon-tf-locks --query "Table.TableStatus"
 ```
 
-After apply, note the bucket name and hard-code it in all team `backend {}` blocks (already done in team1/main.tf and team2/main.tf: `hackathon-tf-state-064453091991`).
+After apply, note the bucket name and hard-code it in all team `backend {}` blocks (already done in team0/main.tf and team1/main.tf: `hackathon-tf-state-064453091991`).
 
 ### Missing Variable File
 
@@ -288,8 +288,8 @@ variable "region" {
 |-----------|-------------|---------|
 | `backend/terraform.tfstate` | Organizer (local) | State bucket + lock table |
 | `shared/terraform.tfstate` | Organizer | VPC, networking, endpoints, ALB, security groups |
-| `team1/terraform.tfstate` | Team 1 | S3, Lambda, API GW, Bedrock KB, DynamoDB |
-| `team2/terraform.tfstate` | Team 2 | Cognito, ECS, ECR, Bedrock Agent, ALB rules |
+| `team0/terraform.tfstate` | Team 0 | S3, Lambda, API GW, Bedrock KB, DynamoDB |
+| `team1/terraform.tfstate` | Team 1 | Cognito, ECS, ECR, Bedrock Agent, ALB rules |
 | `verify-endpoints/terraform.tfstate` | Organizer | Temporary verification Lambda (destroy after Day 1) |
 
 ### Acceptance Criteria
@@ -298,7 +298,7 @@ variable "region" {
 - [ ] `aws s3api get-bucket-versioning --bucket hackathon-tf-state-064453091991` returns `"Status": "Enabled"`
 - [ ] `aws dynamodb describe-table --table-name hackathon-tf-locks` returns `"TableStatus": "ACTIVE"`
 - [ ] `aws s3api get-bucket-encryption --bucket hackathon-tf-state-064453091991` shows SSE-KMS
-- [ ] Running `terraform init` in `terraform/team1/` succeeds (backend can be reached)
+- [ ] Running `terraform init` in `terraform/team0/` succeeds (backend can be reached)
 
 ### Effort Estimate
 
@@ -392,9 +392,9 @@ Create all 7 PrivateLink interface endpoints and 2 Gateway endpoints so that Lam
 | Endpoint | Type | Cost | Required by |
 |----------|------|------|-------------|
 | `s3` | Gateway | Free | All — S3 reads/writes |
-| `dynamodb` | Gateway | Free | Team 1 Lambda → DynamoDB |
-| `bedrock-runtime` | Interface | ~€7.50/mo/AZ | Team 1 sidecar Lambda → KB ingestion |
-| `bedrock-agent-runtime` | Interface | ~€7.50/mo/AZ | Team 2 shim Lambda → Agent invocation |
+| `dynamodb` | Gateway | Free | Team 0 Lambda → DynamoDB |
+| `bedrock-runtime` | Interface | ~€7.50/mo/AZ | Team 0 sidecar Lambda → KB ingestion |
+| `bedrock-agent-runtime` | Interface | ~€7.50/mo/AZ | Team 1 shim Lambda → Agent invocation |
 | `textract` | Interface | ~€7.50/mo/AZ | Optional — OCR for scanned docs |
 | `ecr.api` | Interface | ~€7.50/mo/AZ | ECS Fargate → ECR image pull (auth) |
 | `ecr.dkr` | Interface | ~€7.50/mo/AZ | ECS Fargate → ECR image pull (layers) |
@@ -405,7 +405,7 @@ Create all 7 PrivateLink interface endpoints and 2 Gateway endpoints so that Lam
 
 ### Missing Endpoint for API Gateway
 
-The networking module does not yet include the `execute-api` endpoint needed by Team 1 for the private API Gateway. Add it:
+The networking module does not yet include the `execute-api` endpoint needed by Team 0 for the private API Gateway. Add it:
 
 ```hcl
 # Add to terraform/modules/networking/main.tf
@@ -460,7 +460,7 @@ resource "aws_vpc_endpoint" "ssm" {
 }
 ```
 
-Add `ssm = aws_vpc_endpoint.ssm.id` to the `endpoint_ids` output. Team 2 needs this for Open WebUI's `WEBUI_SECRET_KEY` SSM Parameter.
+Add `ssm = aws_vpc_endpoint.ssm.id` to the `endpoint_ids` output. Team 1 needs this for Open WebUI's `WEBUI_SECRET_KEY` SSM Parameter.
 
 ### Verify DNS Resolution (from inside VPC)
 
@@ -481,7 +481,7 @@ done
 - [ ] Gateway endpoints (s3, dynamodb) appear in the private route table
 - [ ] `private_dns_enabled = true` on all interface endpoints — confirmed in describe output
 - [ ] DNS check: `bedrock-runtime.eu-central-1.amazonaws.com` resolves to a 10.x.x.x address from within VPC
-- [ ] `execute-api` endpoint ID appears in `terraform output endpoint_ids` — needed by Team 1's private API Gateway
+- [ ] `execute-api` endpoint ID appears in `terraform output endpoint_ids` — needed by Team 0's private API Gateway
 
 ### Effort Estimate
 
@@ -492,7 +492,7 @@ done
 - Interface endpoints provision ENIs in each subnet — if subnets don't exist yet, endpoint creation fails; always apply T0-03 first
 - `private_dns_enabled = true` requires the VPC to have `enableDnsSupport = true` and `enableDnsHostnames = true` — both set in T0-03
 - Gateway endpoints (S3, DynamoDB) are attached to route tables, not subnets; confirm the private route table ID is referenced correctly
-- The `execute-api` endpoint is needed for **private** API Gateway only; Team 1's API Gateway must be type `PRIVATE` and include this endpoint ID in its endpoint configuration
+- The `execute-api` endpoint is needed for **private** API Gateway only; Team 0's API Gateway must be type `PRIVATE` and include this endpoint ID in its endpoint configuration
 
 ---
 
@@ -500,7 +500,7 @@ done
 
 ### Goal
 
-Provision the internal Application Load Balancer with a default listener returning `503 Service not yet configured`. Team 2 will add listener rules and target groups on top of this skeleton; neither team touches the ALB resource itself.
+Provision the internal Application Load Balancer with a default listener returning `503 Service not yet configured`. Team 1 will add listener rules and target groups on top of this skeleton; neither team touches the ALB resource itself.
 
 ### What's Already Written
 
@@ -514,7 +514,7 @@ Provision the internal Application Load Balancer with a default listener returni
 The current setup only has an HTTP listener on port 80. The Cognito `authenticate-cognito` action (M1-01) **requires HTTPS**. Two options:
 
 **Option A — HTTP only for the hackathon (fast, no cert needed):**
-Leave as-is. Team 2 adds listener rules to the port 80 listener. Cognito auth is skipped for Day 1–2, added on Day 3.
+Leave as-is. Team 1 adds listener rules to the port 80 listener. Cognito auth is skipped for Day 1–2, added on Day 3.
 
 **Option B — HTTPS with self-signed cert (recommended):**
 
@@ -572,12 +572,12 @@ terraform {
 }
 ```
 
-Export the HTTPS listener ARN for Team 2:
+Export the HTTPS listener ARN for Team 1:
 
 ```hcl
 # In shared/outputs.tf — update alb_listener_arn to the HTTPS listener
 output "alb_listener_arn" {
-  description = "ARN of the HTTPS listener (Team 2 adds rules here)"
+  description = "ARN of the HTTPS listener (Team 1 adds rules here)"
   value       = aws_lb_listener.https.arn   # was http, now https
 }
 ```
@@ -589,7 +589,7 @@ output "alb_listener_arn" {
 - [ ] Hitting the ALB DNS name from within the VPC returns HTTP 503 (not connection refused)
 - [ ] ALB is in private subnets — confirm `Scheme: internal` and subnets are the private ones
 - [ ] `terraform output alb_listener_arn` returns a non-empty ARN
-- [ ] `terraform output alb_dns_name` returns the ALB DNS name — share with Team 2 for Cognito callback URL
+- [ ] `terraform output alb_dns_name` returns the ALB DNS name — share with Team 1 for Cognito callback URL
 
 ### Effort Estimate
 
@@ -611,8 +611,8 @@ Enable these models (click "Manage model access"):
 
 | Model | Provider | Needed by | Notes |
 |-------|----------|-----------|-------|
-| Titan Text Embeddings V2 | Amazon | Team 1 (KB embeddings) | Usually instant |
-| Claude 3.5 Sonnet v2 | Anthropic | Team 2 (Agent + responses) | Requires Anthropic ToS acceptance |
+| Titan Text Embeddings V2 | Amazon | Team 0 (KB embeddings) | Usually instant |
+| Claude 3.5 Sonnet v2 | Anthropic | Team 1 (Agent + responses) | Requires Anthropic ToS acceptance |
 | Claude 3 Haiku | Anthropic | Optional fallback | Faster/cheaper |
 
 ```bash
@@ -765,8 +765,8 @@ Infrastructure
 Access
   [ ] All 6 participants have working AWS CLI profiles (aws sts get-caller-identity passes)
   [ ] GitHub repo accessible to all participants (clone + push permissions verified)
+  [ ] team0/ directory: terraform init succeeds for Team 0 member
   [ ] team1/ directory: terraform init succeeds for Team 1 member
-  [ ] team2/ directory: terraform init succeeds for Team 2 member
 
 Bedrock
   [ ] amazon.titan-embed-text-v2:0 — ACTIVE in eu-central-1
@@ -787,7 +787,7 @@ Cost Estimate (4-day hackathon)
   [ ] NAT Gateway: €0 (disabled)
   [ ] ALB: ~€2/day
   [ ] Bedrock: pay-per-use (estimate €5–15 for hackathon traffic)
-  [ ] ECS Fargate (Team 2): ~€1/day for 1 vCPU task
+  [ ] ECS Fargate (Team 1): ~€1/day for 1 vCPU task
   [ ] Total estimate: ~€50–80 for the full hackathon
 ```
 
@@ -833,15 +833,15 @@ aws lambda invoke \
 terraform destroy -auto-approve
 cd ../..
 
-echo "Shared infrastructure ready. Participants can now run terraform init in team1/ and team2/"
+echo "Shared infrastructure ready. Participants can now run terraform init in team0/ and team1/"
 ```
 
 ---
 
 ## What Team 0 Does NOT Do
 
-- Does not create Team 1 or Team 2 application resources (S3, Lambda, Bedrock KB, Cognito, ECS)
+- Does not create Team 0 or Team 1 application resources (S3, Lambda, Bedrock KB, Cognito, ECS)
 - Does not push any Docker images to ECR
-- Does not configure Bedrock Knowledge Bases (Team 1 owns that)
-- Does not deploy the ALB listener rules (Team 2 owns those)
+- Does not configure Bedrock Knowledge Bases (Team 0 owns that)
+- Does not deploy the ALB listener rules (Team 1 owns those)
 - Does not write the metadata schema — that is agreed by all teams at Day 1 kickoff
