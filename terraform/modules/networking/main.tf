@@ -299,7 +299,7 @@ resource "aws_vpc_endpoint" "sts" {
 resource "aws_security_group" "alb" {
   name_prefix = "${var.project_name}-alb-"
   vpc_id      = aws_vpc.main.id
-  description = "Internal ALB — accepts HTTPS from VPN/corporate network"
+  description = "Internal ALB - accepts HTTPS from VPN/corporate network"
 
   ingress {
     from_port   = 443
@@ -369,7 +369,7 @@ resource "aws_lb_listener" "http" {
 resource "aws_security_group" "lambda" {
   name_prefix = "${var.project_name}-lambda-"
   vpc_id      = aws_vpc.main.id
-  description = "Lambda functions — outbound to VPC endpoints only"
+  description = "Lambda functions - outbound to VPC endpoints only"
 
   egress {
     from_port   = 443
@@ -388,7 +388,7 @@ resource "aws_security_group" "lambda" {
 resource "aws_security_group" "ecs_tasks" {
   name_prefix = "${var.project_name}-ecs-"
   vpc_id      = aws_vpc.main.id
-  description = "ECS Fargate tasks — accepts traffic from ALB"
+  description = "ECS Fargate tasks - accepts traffic from ALB"
 
   ingress {
     from_port       = 8080
