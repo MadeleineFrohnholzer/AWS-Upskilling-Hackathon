@@ -81,9 +81,25 @@ module "presigned_url_lambda" {
 }
 
 # -----------------------------------------------------------------------------
+# Ingest Lambda (landing → processed bucket)
+# -----------------------------------------------------------------------------
+module "ingest_lambda" {
+  source = "../modules/ingest-lambda"
+
+  landing_bucket_id    = module.storage.landing_bucket_id
+  landing_bucket_arn   = module.storage.landing_bucket_arn
+  processed_bucket_id  = module.storage.processed_bucket_id
+  processed_bucket_arn = module.storage.processed_bucket_arn
+  subnet_ids           = local.private_subnet_ids
+  security_group_id    = local.lambda_security_group_id
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+# -----------------------------------------------------------------------------
 # TODO: Add these resources during the hackathon
 # -----------------------------------------------------------------------------
-# - Lambda: S3 event trigger handler
 # - API Gateway: HTTP API for upload endpoint (POST /upload → presigned_url_lambda)
 # - Bedrock Knowledge Base + data source
 # - EventBridge: weekly schedule rule
