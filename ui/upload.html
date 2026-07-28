@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document Upload</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.12);
+      padding: 2rem;
+      width: 100%;
+      max-width: 520px;
+    }
+
+    h1 { font-size: 1.25rem; margin-bottom: 1.5rem; color: #111; }
+
+    .field { margin-bottom: 1.1rem; }
+
+    label {
+      display: block;
+      font-size: .85rem;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: .35rem;
+    }
+
+    label .required { color: #c00; margin-left: 2px; }
+    label .optional { font-weight: 400; color: #888; font-size: .8rem; margin-left: 4px; }
+
+    input[type="text"], select, input[type="file"] {
+      width: 100%;
+      padding: .5rem .7rem;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: .95rem;
+      background: #fafafa;
+      transition: border-color .15s;
+    }
+
+    input[type="text"]:focus, select:focus {
+      outline: none;
+      border-color: #0066cc;
+      background: #fff;
+    }
+
+    input[type="file"] { padding: .4rem; cursor: pointer; }
+
+    .field-error {
+      font-size: .8rem;
+      color: #c00;
+      margin-top: .3rem;
+      display: none;
+    }
+
+    .field.invalid input, .field.invalid select { border-color: #c00; }
+    .field.invalid .field-error { display: block; }
+
+    button[type="submit"] {
+      width: 100%;
+      padding: .7rem;
+      background: #0066cc;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: .5rem;
+      transition: background .15s;
+    }
+
+    button[type="submit"]:hover:not(:disabled) { background: #005bb5; }
+    button[type="submit"]:disabled { background: #aaa; cursor: not-allowed; }
+
+    .status {
+      margin-top: 1.2rem;
+      padding: .8rem 1rem;
+      border-radius: 5px;
+      font-size: .9rem;
+      display: none;
+    }
+
+    .status.success { background: #e6f4ea; color: #1a7f37; border: 1px solid #b7dfbf; }
+    .status.error   { background: #fdecea; color: #b00020; border: 1px solid #f5c2c0; }
+    .status.info    { background: #e8f0fe; color: #1a56cc; border: 1px solid #b4ccf5; }
+
+    .progress {
+      height: 4px;
+      background: #e0e0e0;
+      border-radius: 2px;
+      margin-top: 1rem;
+      display: none;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0;
+      background: #0066cc;
+      border-radius: 2px;
+      transition: width .2s;
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>Upload Document</h1>
+
+  <form id="uploadForm" novalidate>
+
+    <div class="field" id="field-file">
+      <label for="file">File <span class="required">*</span></label>
+      <input type="file" id="file" accept=".pdf,.docx,.pptx,.doc,.ppt,.txt,.md" />
+      <div class="field-error">Please select a file.</div>
+    </div>
+
+    <div class="field" id="field-industry">
+      <label for="industry">Industry <span class="required">*</span></label>
+      <select id="industry">
+        <option value="">— select —</option>
+        <option>FSI</option>
+        <option>PRD - Automotive</option>
+        <option>PRD - Life Science</option>
+        <option>PRD - Industrial</option>
+        <option>PRD - Consumer Goods</option>
+        <option>CMT</option>
+        <option>H&amp;PS</option>
+        <option>RES</option>
+        <option>Other</option>
+      </select>
+      <div class="field-error">Industry is required.</div>
+    </div>
+
+    <div class="field" id="field-doctype">
+      <label for="doctype">Document Type <span class="required">*</span></label>
+      <select id="doctype">
+        <option value="">— select —</option>
+        <option>Architecture</option>
+        <option>Discussion Deck</option>
+        <option>RFP</option>
+        <option>Proposal</option>
+        <option>PoC</option>
+        <option>Case Study</option>
+        <option>Statement of Work (SOW)</option>
+        <option>Assessment / Diagnostic</option>
+        <option>Roadmap</option>
+        <option>Runbook</option>
+        <option>Executive Summary</option>
+        <option>Point of View / Whitepaper</option>
+        <option>Other</option>
+      </select>
+      <div class="field-error">Document Type is required.</div>
+    </div>
+
+    <div class="field" id="field-usecase">
+      <label for="usecase">Use Case <span class="optional">(optional)</span></label>
+      <select id="usecase">
+        <option value="">— select —</option>
+        <option>DB Migration</option>
+        <option>Cloud Migration</option>
+        <option>Data &amp; Analytics Platform</option>
+        <option>GenAI / AI Agent</option>
+        <option>Application Modernization</option>
+        <option>Cybersecurity</option>
+        <option>ERP Implementation</option>
+        <option>Infrastructure Optimization / FinOps</option>
+        <option>DevOps / Platform Engineering</option>
+        <option>Digital Transformation</option>
+        <option>Managed Services</option>
+        <option>Disaster Recovery / Resilience</option>
+        <option>Other</option>
+      </select>
+    </div>
+
+    <div class="field" id="field-client">
+      <label for="client">Client <span class="optional">(optional)</span></label>
+      <input type="text" id="client" placeholder="e.g. Acme Corp" maxlength="100" />
+    </div>
+
+    <button type="submit" id="submitBtn">Upload</button>
+  </form>
+
+  <div class="progress" id="progress"><div class="progress-bar" id="progressBar"></div></div>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+  // Replace with the value of `terraform output upload_api_url` after `terraform apply`
+  const UPLOAD_API_URL = "REPLACE_WITH_TERRAFORM_OUTPUT_upload_api_url";
+
+  const form       = document.getElementById("uploadForm");
+  const submitBtn  = document.getElementById("submitBtn");
+  const statusEl   = document.getElementById("status");
+  const progressEl = document.getElementById("progress");
+  const progressBar= document.getElementById("progressBar");
+
+  function showStatus(type, msg) {
+    statusEl.className = "status " + type;
+    statusEl.textContent = msg;
+    statusEl.style.display = "block";
+  }
+
+  function setProgress(pct) {
+    progressEl.style.display = "block";
+    progressBar.style.width = pct + "%";
+  }
+
+  function clearValidation() {
+    document.querySelectorAll(".field.invalid").forEach(f => f.classList.remove("invalid"));
+  }
+
+  function validate() {
+    let valid = true;
+
+    const fileInput = document.getElementById("file");
+    const fieldFile = document.getElementById("field-file");
+    if (!fileInput.files.length) {
+      fieldFile.classList.add("invalid");
+      valid = false;
+    }
+
+    const industry = document.getElementById("industry");
+    const fieldIndustry = document.getElementById("field-industry");
+    if (!industry.value) {
+      fieldIndustry.classList.add("invalid");
+      valid = false;
+    }
+
+    const doctype = document.getElementById("doctype");
+    const fieldDoctype = document.getElementById("field-doctype");
+    if (!doctype.value) {
+      fieldDoctype.classList.add("invalid");
+      valid = false;
+    }
+
+    return valid;
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearValidation();
+    statusEl.style.display = "none";
+    progressEl.style.display = "none";
+
+    if (!validate()) return;
+
+    const file     = document.getElementById("file").files[0];
+    const industry = document.getElementById("industry").value;
+    const doctype  = document.getElementById("doctype").value;
+    const usecase  = document.getElementById("usecase").value;
+    const client   = document.getElementById("client").value.trim();
+
+    submitBtn.disabled = true;
+    showStatus("info", "Requesting upload URL…");
+    setProgress(10);
+
+    // Step 1: get presigned URL
+    let uploadUrl, filename;
+    try {
+      const body = { filename: file.name, Industry: industry, DocumentType: doctype };
+      if (usecase) body.UseCase = usecase;
+      if (client)  body.Client  = client;
+
+      const res = await fetch(UPLOAD_API_URL + "/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        const msgs = data.errors ? data.errors.join("; ") : (data.message || "Unknown error");
+        showStatus("error", "Validation failed: " + msgs);
+        submitBtn.disabled = false;
+        progressEl.style.display = "none";
+        return;
+      }
+
+      uploadUrl = data.upload_url;
+      filename  = data.filename;
+    } catch (err) {
+      showStatus("error", "Could not reach the upload API. Check your network or that the API URL is configured.");
+      submitBtn.disabled = false;
+      progressEl.style.display = "none";
+      return;
+    }
+
+    // Step 2: PUT file directly to S3
+    showStatus("info", "Uploading file to S3…");
+    setProgress(40);
+
+    try {
+      const putRes = await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
+
+      if (!putRes.ok) {
+        // Presigned URL may have expired if the user left the tab open
+        if (putRes.status === 403) {
+          showStatus("error", "Upload URL has expired. Please refresh and try again.");
+        } else {
+          showStatus("error", "S3 upload failed (HTTP " + putRes.status + "). Please try again.");
+        }
+        submitBtn.disabled = false;
+        progressEl.style.display = "none";
+        return;
+      }
+    } catch (err) {
+      showStatus("error", "Network error during S3 upload: " + err.message);
+      submitBtn.disabled = false;
+      progressEl.style.display = "none";
+      return;
+    }
+
+    setProgress(100);
+    showStatus("success", "\"" + filename + "\" uploaded successfully. The ingestion pipeline has been triggered.");
+    submitBtn.disabled = false;
+    form.reset();
+    setTimeout(() => { progressEl.style.display = "none"; }, 1500);
+  });
+</script>
+</body>
+</html>

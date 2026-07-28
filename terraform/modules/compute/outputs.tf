@@ -27,3 +27,13 @@ output "ecs_tasks_security_group_id" {
   description = "Security group ID for ECS tasks"
   value       = aws_security_group.ecs_tasks.id
 }
+
+output "ecs_task_role_arn" {
+  description = "IAM task role ARN — the running containers assume this to call Bedrock"
+  value       = aws_iam_role.ecs_task_role.arn
+}
+
+output "proxy_ecr_repository_url" {
+  description = "ECR URL for the bedrock-proxy image (empty string if module not wired)"
+  value       = ""
+}

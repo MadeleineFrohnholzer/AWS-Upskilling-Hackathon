@@ -31,3 +31,8 @@ output "bedrock_kb_arn" {
   description = "Bedrock Knowledge Base ARN"
   value       = module.bedrock_kb.knowledge_base_arn
 }
+
+output "upload_api_url" {
+  description = "HTTP API Gateway endpoint — POST /upload to request a presigned S3 PUT URL"
+  value       = module.presigned_url_lambda.api_endpoint
+}
