@@ -35,3 +35,9 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+variable "cors_allowed_origins" {
+  description = "Allowed origins for API Gateway CORS. Use [\"*\"] for dev; lock to the upload page origin in prod."
+  type        = list(string)
+  default     = ["*"]
+}
