@@ -1,6 +1,6 @@
 import json
-import boto3
 import os
+import boto3
 from datetime import datetime, timezone
 
 s3 = boto3.client("s3")
@@ -95,7 +95,7 @@ def handler(event, _context):
     if "UploadedAt" not in metadata:
         metadata["UploadedAt"] = datetime.now(timezone.utc).isoformat()
 
-    metadata_key = f"{filename}.metadata.json"
+    metadata_key = f"{os.path.splitext(filename)[0]}.metadata.json"
     s3.put_object(
         Bucket=BUCKET,
         Key=metadata_key,
