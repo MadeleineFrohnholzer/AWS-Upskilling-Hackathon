@@ -98,10 +98,24 @@ module "ingest_lambda" {
 }
 
 # -----------------------------------------------------------------------------
+# Bedrock Knowledge Base
+# -----------------------------------------------------------------------------
+module "bedrock_kb" {
+  source = "../modules/bedrock-kb"
+
+  processed_bucket_id  = module.storage.processed_bucket_id
+  processed_bucket_arn = module.storage.processed_bucket_arn
+  region               = var.region
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+# -----------------------------------------------------------------------------
 # TODO: Add these resources during the hackathon
 # -----------------------------------------------------------------------------
 # - API Gateway: HTTP API for upload endpoint (POST /upload → presigned_url_lambda)
-# - Bedrock Knowledge Base + data source
+# - Bedrock Knowledge Base + data source (done)
 # - EventBridge: weekly schedule rule
 # - Lambda: weekly digest generator
 # - SES: email identity + sending configuration
