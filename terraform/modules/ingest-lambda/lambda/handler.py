@@ -35,7 +35,6 @@ def handler(event, _context):
         bedrock.start_ingestion_job(
             knowledgeBaseId=KB_ID,
             dataSourceId=KB_DATA_SOURCE_ID,
-            ingestionJobType="INCREMENTAL",
         )
         logger.info("Started incremental KB sync")
     except Exception:
