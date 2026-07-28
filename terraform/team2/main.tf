@@ -1,5 +1,5 @@
 # =============================================================================
-# Team 2 — Access / Knowledge App (Milestone 1)
+# Team 2 - Access / Knowledge App (Milestone 1)
 # =============================================================================
 # Owns: Cognito, ECS Fargate, ECR, Bedrock Agent, ALB target groups
 
@@ -125,11 +125,13 @@ resource "aws_cognito_user_pool" "main" {
   }
 }
 
+# Cognito hosted-UI domain (used by ALB for the OAuth redirect)
 resource "aws_cognito_user_pool_domain" "main" {
   domain       = "${var.project_name}-${var.environment}"
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
+# Entra ID OIDC identity provider
 resource "aws_cognito_identity_provider" "entra_id" {
   user_pool_id  = aws_cognito_user_pool.main.id
   provider_name = "EntraID"
@@ -158,14 +160,15 @@ resource "aws_cognito_user_pool_client" "chat_app" {
   name         = "${var.project_name}-${var.environment}-chat-app-client"
   user_pool_id = aws_cognito_user_pool.main.id
 
-  generate_secret                      = true
-  allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["openid", "email", "profile"]
-  allowed_oauth_flows_user_pool_client = true
+  generate_secret = true
+
+  allowed_oauth_flows_user_pool_client = length(compact(var.cognito_callback_urls)) > 0
+  allowed_oauth_flows                  = length(compact(var.cognito_callback_urls)) > 0 ? ["code"] : []
+  allowed_oauth_scopes                 = length(compact(var.cognito_callback_urls)) > 0 ? ["openid", "email", "profile"] : []
   supported_identity_providers         = ["EntraID"]
 
-  callback_urls = var.cognito_callback_urls
-  logout_urls   = var.cognito_logout_urls
+  callback_urls = compact(var.cognito_callback_urls)
+  logout_urls   = compact(var.cognito_logout_urls)
 
   access_token_validity  = 1
   id_token_validity      = 1
