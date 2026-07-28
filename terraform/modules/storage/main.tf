@@ -166,38 +166,26 @@ resource "aws_dynamodb_table" "document_metadata" {
 
   global_secondary_index {
     name            = "IndustryIndex"
+    hash_key        = "Industry"
     projection_type = "ALL"
-    key_schema {
-      attribute_name = "Industry"
-      key_type       = "HASH"
-    }
   }
 
   global_secondary_index {
     name            = "DocumentTypeIndex"
+    hash_key        = "DocumentType"
     projection_type = "ALL"
-    key_schema {
-      attribute_name = "DocumentType"
-      key_type       = "HASH"
-    }
   }
 
   global_secondary_index {
     name            = "UseCaseIndex"
+    hash_key        = "UseCase"
     projection_type = "ALL"
-    key_schema {
-      attribute_name = "UseCase"
-      key_type       = "HASH"
-    }
   }
 
   global_secondary_index {
     name            = "ClientIndex"
+    hash_key        = "Client"
     projection_type = "ALL"
-    key_schema {
-      attribute_name = "Client"
-      key_type       = "HASH"
-    }
   }
 
   tags = {
