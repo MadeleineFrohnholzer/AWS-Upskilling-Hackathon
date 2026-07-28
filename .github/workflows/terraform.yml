@@ -39,6 +39,7 @@ jobs:
             team1:
               - 'terraform/team1/**'
               - 'terraform/modules/storage/**'
+              - 'terraform/modules/presigned-url-lambda/**'
             team2:
               - 'terraform/team2/**'
               - 'terraform/modules/compute/**'
