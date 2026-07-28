@@ -52,3 +52,13 @@ output "app_url" {
   description = "Internal app URL (ALB DNS)"
   value       = data.terraform_remote_state.shared.outputs.alb_dns_name
 }
+
+output "bedrock_agent_id" {
+  description = "Bedrock Agent ID"
+  value       = module.bedrock_agent.agent_id
+}
+
+output "bedrock_agent_alias_id" {
+  description = "Bedrock Agent alias ID (live)"
+  value       = module.bedrock_agent.agent_alias_id
+}
