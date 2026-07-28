@@ -15,3 +15,9 @@ variable "region" {
   type        = string
   default     = "eu-central-1"
 }
+
+variable "open_webui_image" {
+  description = "Docker image URI for Open WebUI (pushed to ECR before applying)"
+  type        = string
+  default     = ""
+}
