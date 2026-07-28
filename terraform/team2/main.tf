@@ -68,16 +68,41 @@ locals {
 }
 
 # -----------------------------------------------------------------------------
+# Bedrock Agent (grounded retrieval with inline citations)
+# -----------------------------------------------------------------------------
+module "bedrock_agent" {
+  source = "../modules/bedrock-agent"
+
+  project_name       = var.project_name
+  environment        = var.environment
+  knowledge_base_id  = var.knowledge_base_id
+  knowledge_base_arn = var.knowledge_base_arn
+}
+
+# -----------------------------------------------------------------------------
+# Bedrock Proxy ECR repository
+# -----------------------------------------------------------------------------
+module "bedrock_proxy" {
+  source = "../modules/bedrock-proxy"
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+# -----------------------------------------------------------------------------
 # Compute Module (ECS, ECR, ALB target group attachment)
 # -----------------------------------------------------------------------------
 module "compute" {
   source = "../modules/compute"
 
-  project_name       = var.project_name
-  environment        = var.environment
-  vpc_id             = local.vpc_id
-  private_subnet_ids = local.private_subnet_ids
-  container_image    = var.open_webui_image
+  project_name           = var.project_name
+  environment            = var.environment
+  vpc_id                 = local.vpc_id
+  private_subnet_ids     = local.private_subnet_ids
+  container_image        = var.open_webui_image
+  proxy_image            = var.proxy_image
+  bedrock_agent_id       = module.bedrock_agent.agent_id
+  bedrock_agent_alias_id = module.bedrock_agent.agent_alias_id
 }
 
 # -----------------------------------------------------------------------------
@@ -86,6 +111,4 @@ module "compute" {
 # - Cognito User Pool + Entra ID federation
 # - ALB target group + attach ECS service
 # - ALB listener rule (forward to target group)
-# - Bedrock Agent definition + tool-use schema
-# - Agent action group pointing to Team 1's KB
 # - HTTPS listener (needs ACM cert or use HTTP for hackathon)
