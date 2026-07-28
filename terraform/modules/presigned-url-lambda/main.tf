@@ -31,8 +31,9 @@ resource "aws_iam_role_policy_attachment" "vpc_execution" {
 }
 
 # s3:PutObject covers both the metadata sidecar write and signing the presigned URL
-resource "aws_iam_policy" "s3" {
-  name = "platform-${local.function_name}-s3-landing-put"
+resource "aws_iam_role_policy" "s3" {
+  name = "s3-landing-put"
+  role = aws_iam_role.lambda.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -42,11 +43,6 @@ resource "aws_iam_policy" "s3" {
       Resource = "${var.landing_bucket_arn}/*"
     }]
   })
-}
-
-resource "aws_iam_role_policy_attachment" "s3" {
-  role       = aws_iam_role.lambda.name
-  policy_arn = aws_iam_policy.s3.arn
 }
 
 # ── Lambda package ────────────────────────────────────────────────────────────
