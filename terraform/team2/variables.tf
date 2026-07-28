@@ -39,3 +39,37 @@ variable "proxy_image" {
   type        = string
   default     = ""
 }
+
+# -----------------------------------------------------------------------------
+# Cognito / Entra ID SSO variables
+# -----------------------------------------------------------------------------
+variable "entra_tenant_id" {
+  description = "Azure Entra ID (AAD) tenant ID"
+  type        = string
+  default     = ""
+}
+
+variable "entra_client_id" {
+  description = "Entra ID app registration client ID"
+  type        = string
+  default     = ""
+}
+
+variable "entra_client_secret" {
+  description = "Entra ID app registration client secret"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "cognito_callback_urls" {
+  description = "Allowed callback URLs for the Cognito app client (ALB HTTPS endpoint)"
+  type        = list(string)
+  default     = []
+}
+
+variable "cognito_logout_urls" {
+  description = "Allowed logout URLs for the Cognito app client"
+  type        = list(string)
+  default     = []
+}
