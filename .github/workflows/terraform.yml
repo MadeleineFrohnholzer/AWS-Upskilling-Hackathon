@@ -104,6 +104,10 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: terraform plan -input=false -no-color
         continue-on-error: true
+        env:
+          TF_VAR_entra_tenant_id: ${{ secrets.ENTRA_TENANT_ID }}
+          TF_VAR_entra_client_id: ${{ secrets.ENTRA_CLIENT_ID }}
+          TF_VAR_entra_client_secret: ${{ secrets.ENTRA_CLIENT_SECRET }}
 
       - if: matrix.changed == 'true'
         name: Post Plan to PR
@@ -188,3 +192,7 @@ jobs:
         run: |
           terraform init -input=false
           terraform apply -input=false -auto-approve
+        env:
+          TF_VAR_entra_tenant_id: ${{ secrets.ENTRA_TENANT_ID }}
+          TF_VAR_entra_client_id: ${{ secrets.ENTRA_CLIENT_ID }}
+          TF_VAR_entra_client_secret: ${{ secrets.ENTRA_CLIENT_SECRET }}
