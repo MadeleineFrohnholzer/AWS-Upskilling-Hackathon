@@ -125,12 +125,24 @@ resource "aws_dynamodb_table" "feedback" {
 
 # -----------------------------------------------------------------------------
 # DynamoDB: document-metadata Table
+#
+# Primary key: filename (S3 key) — one item per document
+# GSIs enable the AI system to query by Industry, DocumentType, UseCase, Client:
+#   IndustryIndex     — hash: Industry,      range: DocumentType  (e.g. all Case Studies for FSI)
+#   DocumentTypeIndex — hash: DocumentType                        (e.g. all RFPs)
+#   UseCaseIndex      — hash: UseCase                             (e.g. all Cloud Migration docs)
+#   ClientIndex       — hash: Client                              (e.g. all Acme Corp docs)
+# UploadedBy / UploadedAt are stored as item attributes only (no index needed yet).
 # -----------------------------------------------------------------------------
 resource "aws_dynamodb_table" "document_metadata" {
   name         = "${var.project_name}-document-metadata"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "Industry"
-  range_key    = "Type"
+  hash_key     = "filename"
+
+  attribute {
+    name = "filename"
+    type = "S"
+  }
 
   attribute {
     name = "Industry"
@@ -138,8 +150,54 @@ resource "aws_dynamodb_table" "document_metadata" {
   }
 
   attribute {
-    name = "Type"
+    name = "DocumentType"
     type = "S"
+  }
+
+  attribute {
+    name = "UseCase"
+    type = "S"
+  }
+
+  attribute {
+    name = "Client"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "IndustryIndex"
+    projection_type = "ALL"
+    key_schema {
+      attribute_name = "Industry"
+      key_type       = "HASH"
+    }
+  }
+
+  global_secondary_index {
+    name            = "DocumentTypeIndex"
+    projection_type = "ALL"
+    key_schema {
+      attribute_name = "DocumentType"
+      key_type       = "HASH"
+    }
+  }
+
+  global_secondary_index {
+    name            = "UseCaseIndex"
+    projection_type = "ALL"
+    key_schema {
+      attribute_name = "UseCase"
+      key_type       = "HASH"
+    }
+  }
+
+  global_secondary_index {
+    name            = "ClientIndex"
+    projection_type = "ALL"
+    key_schema {
+      attribute_name = "Client"
+      key_type       = "HASH"
+    }
   }
 
   tags = {
