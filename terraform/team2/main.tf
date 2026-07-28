@@ -1,5 +1,5 @@
-# =============================================================================
-# Team 2 — Access / Knowledge App (Milestone 1)
+﻿# =============================================================================
+# Team 2 - Access / Knowledge App (Milestone 1)
 # =============================================================================
 # Owns: Cognito, ECS Fargate, ECR, Bedrock Agent, ALB target groups
 
@@ -125,11 +125,13 @@ resource "aws_cognito_user_pool" "main" {
   }
 }
 
+# Cognito hosted-UI domain (used by ALB for the OAuth redirect)
 resource "aws_cognito_user_pool_domain" "main" {
   domain       = "${var.project_name}-${var.environment}"
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
+# Entra ID OIDC identity provider
 resource "aws_cognito_identity_provider" "entra_id" {
   user_pool_id  = aws_cognito_user_pool.main.id
   provider_name = "EntraID"

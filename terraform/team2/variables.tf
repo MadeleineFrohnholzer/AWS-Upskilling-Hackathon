@@ -1,4 +1,4 @@
-variable "project_name" {
+﻿variable "project_name" {
   description = "Project name"
   type        = string
   default     = "knowledge-base"
