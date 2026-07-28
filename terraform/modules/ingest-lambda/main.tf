@@ -29,15 +29,16 @@ resource "aws_iam_role_policy_attachment" "vpc_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
-resource "aws_iam_policy" "s3" {
-  name = "platform-${local.function_name}-s3"
+resource "aws_iam_role_policy" "s3" {
+  name = "s3-landing-processed"
+  role = aws_iam_role.ingest.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:DeleteObject"]
+        Action   = ["s3:GetObject", "s3:HeadObject", "s3:DeleteObject"]
         Resource = "${var.landing_bucket_arn}/*"
       },
       {
@@ -47,11 +48,6 @@ resource "aws_iam_policy" "s3" {
       }
     ]
   })
-}
-
-resource "aws_iam_role_policy_attachment" "s3" {
-  role       = aws_iam_role.ingest.name
-  policy_arn = aws_iam_policy.s3.arn
 }
 
 # ── Lambda package ────────────────────────────────────────────────────────────
