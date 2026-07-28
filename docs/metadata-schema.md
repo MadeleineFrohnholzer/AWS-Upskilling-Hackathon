@@ -13,7 +13,6 @@ This schema defines the metadata fields stored alongside every document vector. 
 | `DocumentType` | string | **Yes** | Architecture, Discussion Deck, RFP, Proposal, PoC, Case Study, Statement of Work (SOW), Assessment / Diagnostic, Roadmap, Runbook, Executive Summary, Point of View / Whitepaper, Other |
 | `UseCase` | string | No | DB Migration, Cloud Migration, Data & Analytics Platform, GenAI / AI Agent, Application Modernization, Cybersecurity, ERP Implementation, Infrastructure Optimization / FinOps, DevOps / Platform Engineering, Digital Transformation, Managed Services, Disaster Recovery / Resilience, Other |
 | `Client` | string | No | Client identifier for internal filtering |
-| `UploadedBy` | string | No | Email or username of the uploader |
 | `UploadedAt` | ISO 8601 | No | Timestamp of upload |
 
 ## Example Sidecar File
