@@ -82,7 +82,7 @@ resource "aws_iam_role_policy" "bedrock_agent_invoke" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["bedrock:InvokeAgent"]
-      Resource = "arn:aws:bedrock:${data.aws_region.current.name}:*:agent-alias/*/*"
+      Resource = "arn:aws:bedrock:${data.aws_region.current.id}:*:agent-alias/*/*"
     }]
   })
 }
@@ -109,7 +109,7 @@ locals {
       logDriver = "awslogs"
       options = {
         "awslogs-group"         = "/ecs/${var.project_name}-chat-frontend"
-        "awslogs-region"        = data.aws_region.current.name
+        "awslogs-region"        = data.aws_region.current.id
         "awslogs-stream-prefix" = "chat"
       }
     }
@@ -125,13 +125,13 @@ locals {
     environment = [
       { name = "BEDROCK_AGENT_ID",       value = var.bedrock_agent_id },
       { name = "BEDROCK_AGENT_ALIAS_ID", value = var.bedrock_agent_alias_id },
-      { name = "AWS_REGION",             value = data.aws_region.current.name },
+      { name = "AWS_REGION",             value = data.aws_region.current.id },
     ]
     logConfiguration = {
       logDriver = "awslogs"
       options = {
         "awslogs-group"         = "/ecs/${var.project_name}-chat-frontend"
-        "awslogs-region"        = data.aws_region.current.name
+        "awslogs-region"        = data.aws_region.current.id
         "awslogs-stream-prefix" = "proxy"
       }
     }

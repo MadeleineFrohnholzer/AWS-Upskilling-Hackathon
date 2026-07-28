@@ -22,7 +22,7 @@ resource "aws_iam_role" "agent" {
       Action    = "sts:AssumeRole"
       Condition = {
         StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
-        ArnLike      = { "aws:SourceArn" = "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:agent/*" }
+        ArnLike      = { "aws:SourceArn" = "arn:aws:bedrock:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:agent/*" }
       }
     }]
   })
@@ -39,14 +39,14 @@ resource "aws_iam_role_policy" "agent" {
         Sid      = "InvokeFoundationModel"
         Effect   = "Allow"
         Action   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
-        Resource = "arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0"
+        Resource = "arn:aws:bedrock:${data.aws_region.current.id}::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0"
       },
       {
         Sid    = "RetrieveFromKnowledgeBase"
         Effect = "Allow"
         Action = ["bedrock:Retrieve", "bedrock:RetrieveAndGenerate"]
         # Scoped to the specific KB once it exists; wildcard acceptable for dev
-        Resource = var.knowledge_base_arn != "" ? var.knowledge_base_arn : "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:knowledge-base/*"
+        Resource = var.knowledge_base_arn != "" ? var.knowledge_base_arn : "arn:aws:bedrock:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:knowledge-base/*"
       }
     ]
   })
