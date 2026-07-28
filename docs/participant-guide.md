@@ -71,13 +71,13 @@ aws sts get-caller-identity --profile hackathon
 
 ### 4. Terraform Backend (Pre-provisioned)
 
-The remote state backend (S3 bucket + DynamoDB lock table) will be provisioned before Day 1. You'll configure it as:
+The remote state backend (S3 bucket + DynamoDB lock table) will be provisioned before Day 1. State is split by squad during the hackathon so each team can apply independently without blocking the other; states are intended to merge into a single project once the build reaches maturity post-hackathon. You'll configure it as:
 
 ```hcl
 terraform {
   backend "s3" {
     bucket         = "hackathon-tf-state-064453091991"
-    key            = "<team1|team2>/terraform.tfstate"
+    key            = "<foundation|team-m0|team-m1>/terraform.tfstate"
     region         = "eu-central-1"
     dynamodb_table = "hackathon-tf-locks"
     encrypt        = true
@@ -146,7 +146,63 @@ terraform/
 - Use **modules** for reusable components
 - Use **variables** for all configurable values (no hardcoded ARNs)
 - Use **outputs** to share values between modules
-- Tag everything: `Project = "knowledge-base"`, `Environment = "dev"`, `Squad = "<your-squad>"`
+
+### Resource Naming Convention
+
+Since squad-owned states are planned to merge into a single project post-hackathon, resource names carry **no squad prefix and no environment suffix** (there's no staging environment to disambiguate against). Instead, each name describes **what the resource does**, in plain, spelled-out terms — not an abbreviation of the AWS service type, since the resource type is already visible in the Terraform resource block itself.
+
+Pattern: `<function>-<qualifier>` — descriptive, snake/kebab-case, no project or squad prefix.
+
+| Resource | Name |
+|----------|------|
+| VPC | `platform-network` |
+| Internal ALB | `internal-load-balancer` |
+| Cognito user pool | `user-authentication-pool` |
+| Cognito app client | `chat-app-auth-client` |
+| S3 landing bucket | `document-upload-landing` (via `bucket_prefix`, not `bucket` — see note) |
+| S3 processed bucket | `document-processed-store` |
+| Lambda — upload + metadata | `document-upload-handler` |
+| Lambda — ingestion trigger | `knowledge-base-ingestion-trigger` |
+| Lambda — weekly digest | `weekly-audit-digest-mailer` |
+| Lambda — agent action group | `bedrock-agent-action-tools` |
+| Bedrock Knowledge Base | `content-knowledge-base` |
+| KB data source | `content-knowledge-base-datasource` |
+| S3 Vector Index | `content-vector-search-index` |
+| DynamoDB — audit trail | `document-audit-trail` |
+| DynamoDB — sessions/config | `chat-session-store` |
+| ECS cluster | `chat-application-cluster` |
+| ECS service | `chat-application-service` |
+| ECR repo | `chat-application-image-repo` |
+
+**S3 bucket names specifically:** bucket names must be globally unique across all AWS accounts, not just ours. Use `bucket_prefix` (not `bucket`) so Terraform/AWS appends a random suffix, rather than hardcoding the full name — e.g. `bucket_prefix = "document-upload-landing-"`.
+
+**Terraform resource block labels** (the identifier after the resource type, not the AWS-side name) should be short, singular, and not repeat the resource type:
+```hcl
+# Good
+resource "aws_s3_bucket" "landing" { ... }
+resource "aws_lambda_function" "upload" { ... }
+
+# Avoid — redundant with the resource type already shown
+resource "aws_s3_bucket" "landing_bucket" { ... }
+```
+
+**IAM roles are the one exception to the no-prefix rule.** All IAM roles use a `platform-` prefix (e.g. `platform-lambda-exec-role`, `platform-github-oidc-role`) because this exact prefix is referenced in the account's IAM policy `Resource` condition, scoping which roles the CI/CD pipeline is allowed to create or modify. Do not "clean up" this prefix to match the rest of the naming convention — it's load-bearing, not stylistic.
+
+### Tagging
+
+Apply tags via the provider's `default_tags` block so every resource is tagged automatically, rather than repeating tags per resource:
+```hcl
+provider "aws" {
+  region = "eu-central-1"
+  default_tags {
+    tags = {
+      Project = "ai-platform-hackathon"
+      Squad   = "m0"   # or "m1" / "foundation" — differs per state, used for cost allocation
+    }
+  }
+}
+```
+`Squad` remains useful as a **tag** for per-team cost tracking in Cost Explorer during the hackathon, even though it's deliberately not part of the resource **name** itself.
 
 ---
 
