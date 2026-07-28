@@ -32,7 +32,7 @@ def handler(event, _context):
 
 
 def _move_document(key):
-    metadata_key = f"{key}.metadata.json"
+    metadata_key = f"{os.path.splitext(key)[0]}.metadata.json"
 
     try:
         s3.head_object(Bucket=LANDING_BUCKET, Key=metadata_key)
