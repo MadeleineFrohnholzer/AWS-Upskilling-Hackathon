@@ -99,6 +99,19 @@ resource "aws_dynamodb_table" "sessions" {
 }
 
 # -----------------------------------------------------------------------------
+# S3 CORS: allow browsers to PUT directly to the landing bucket via presigned URL
+resource "aws_s3_bucket_cors_configuration" "landing" {
+  bucket = aws_s3_bucket.landing.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["PUT"]
+    allowed_origins = var.cors_allowed_origins
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
 # DynamoDB: Feedback Logs Table
 # -----------------------------------------------------------------------------
 resource "aws_dynamodb_table" "feedback" {
