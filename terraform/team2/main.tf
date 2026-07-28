@@ -323,8 +323,7 @@ resource "aws_lb_listener_rule" "chat_frontend" {
   }
 }
 
-# ECS task definition - Open WebUI with Bedrock Agent env vars
-resource "aws_ecs_task_definition" "open_webui" {
+# ECS task definition - Open WebUI with Bedrock Agent env vars\nresource "aws_ecs_task_definition" "open_webui" {
   family                   = "${var.project_name}-open-webui"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
