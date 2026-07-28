@@ -4,6 +4,11 @@
 # Pre-provisioned shared infrastructure for both teams.
 # Outputs are consumed by Team 1 and Team 2 via terraform_remote_state.
 
+# S3 managed prefix list — used to allow Lambda egress to the S3 Gateway endpoint
+data "aws_prefix_list" "s3" {
+  name = "com.amazonaws.${var.region}.s3"
+}
+
 # -----------------------------------------------------------------------------
 # VPC
 # -----------------------------------------------------------------------------
@@ -377,6 +382,14 @@ resource "aws_security_group" "lambda" {
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
     description = "HTTPS to VPC endpoints"
+  }
+
+  egress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_prefix_list.s3.id]
+    description     = "HTTPS to S3 via gateway endpoint"
   }
 
   tags = {
