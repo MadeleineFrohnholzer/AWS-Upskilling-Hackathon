@@ -37,3 +37,17 @@ output "proxy_ecr_repository_url" {
   description = "ECR URL for the bedrock-proxy image (empty string if module not wired)"
   value       = ""
 }
+
+output "cloudwatch_dashboard_name" {
+  description = "CloudWatch dashboard name — open in console to view ECS + ALB metrics"
+  value       = aws_cloudwatch_dashboard.main.dashboard_name
+}
+
+output "alarm_arns" {
+  description = "ARNs of the three CloudWatch metric alarms"
+  value = {
+    alb_5xx_rate    = aws_cloudwatch_metric_alarm.alb_5xx_rate.arn
+    alb_latency_p95 = aws_cloudwatch_metric_alarm.alb_latency_p95.arn
+    ecs_cpu         = aws_cloudwatch_metric_alarm.ecs_cpu.arn
+  }
+}
