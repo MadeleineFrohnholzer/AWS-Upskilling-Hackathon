@@ -43,3 +43,27 @@ variable "memory" {
   type        = number
   default     = 2048
 }
+
+variable "proxy_image" {
+  description = "ECR image URI for the Bedrock proxy sidecar. Leave empty to run Open WebUI without the proxy."
+  type        = string
+  default     = ""
+}
+
+variable "proxy_port" {
+  description = "Port the bedrock-proxy sidecar listens on"
+  type        = number
+  default     = 8000
+}
+
+variable "bedrock_agent_id" {
+  description = "Bedrock Agent ID — passed to the proxy container as BEDROCK_AGENT_ID"
+  type        = string
+  default     = ""
+}
+
+variable "bedrock_agent_alias_id" {
+  description = "Bedrock Agent Alias ID — passed to the proxy container as BEDROCK_AGENT_ALIAS_ID"
+  type        = string
+  default     = ""
+}
