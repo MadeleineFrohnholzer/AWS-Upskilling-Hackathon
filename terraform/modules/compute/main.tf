@@ -82,7 +82,7 @@ resource "aws_iam_role_policy" "bedrock_agent_invoke" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["bedrock:InvokeAgent"]
-      Resource = "arn:aws:bedrock:${data.aws_region.current.id}:*:agent-alias/*/*"
+      Resource = "arn:aws:bedrock:${local.region}:*:agent-alias/*/*"
     }]
   })
 }
@@ -91,6 +91,8 @@ resource "aws_iam_role_policy" "bedrock_agent_invoke" {
 # ECS Task Definition
 # -----------------------------------------------------------------------------
 locals {
+  region = data.aws_region.current.id
+
   # Open WebUI env vars that point it at the local proxy when the proxy is enabled
   webui_proxy_env = var.bedrock_agent_id != "" ? [
     { name = "OPENAI_API_BASE_URL", value = "http://localhost:${var.proxy_port}/v1" },
