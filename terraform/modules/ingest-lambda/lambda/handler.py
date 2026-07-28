@@ -6,10 +6,13 @@ import os
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-s3 = boto3.client("s3")
+s3       = boto3.client("s3")
+bedrock  = boto3.client("bedrock-agent")
 
 LANDING_BUCKET   = os.environ["LANDING_BUCKET"]
 PROCESSED_BUCKET = os.environ["PROCESSED_BUCKET"]
+KB_ID            = os.environ["KB_ID"]
+KB_DATA_SOURCE_ID = os.environ["KB_DATA_SOURCE_ID"]
 
 
 def handler(event, _context):
@@ -27,6 +30,16 @@ def handler(event, _context):
             _move_document(key)
         except Exception:
             logger.exception("Failed to process document key=%s, skipping", key)
+
+    try:
+        bedrock.start_ingestion_job(
+            knowledgeBaseId=KB_ID,
+            dataSourceId=KB_DATA_SOURCE_ID,
+            ingestionJobType="INCREMENTAL",
+        )
+        logger.info("Started incremental KB sync")
+    except Exception:
+        logger.exception("KB sync trigger failed, ignoring")
 
     return {"statusCode": 200}
 
