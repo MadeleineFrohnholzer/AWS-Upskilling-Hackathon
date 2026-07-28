@@ -28,6 +28,16 @@ variable "security_group_id" {
   type        = string
 }
 
+variable "kb_id" {
+  description = "Bedrock Knowledge Base ID"
+  type        = string
+}
+
+variable "kb_data_source_id" {
+  description = "Bedrock Knowledge Base data source ID"
+  type        = string
+}
+
 variable "project_name" {
   description = "Project name prefix for resource naming"
   type        = string

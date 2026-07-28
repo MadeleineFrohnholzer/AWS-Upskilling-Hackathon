@@ -45,6 +45,11 @@ resource "aws_iam_role_policy" "s3" {
         Effect   = "Allow"
         Action   = ["s3:PutObject"]
         Resource = "${var.processed_bucket_arn}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["bedrock:StartIngestionJob"]
+        Resource = "arn:aws:bedrock:*:*:knowledge-base/${var.kb_id}"
       }
     ]
   })
@@ -71,8 +76,10 @@ resource "aws_lambda_function" "ingest" {
 
   environment {
     variables = {
-      LANDING_BUCKET   = var.landing_bucket_id
-      PROCESSED_BUCKET = var.processed_bucket_id
+      LANDING_BUCKET    = var.landing_bucket_id
+      PROCESSED_BUCKET  = var.processed_bucket_id
+      KB_ID             = var.kb_id
+      KB_DATA_SOURCE_ID = var.kb_data_source_id
     }
   }
 

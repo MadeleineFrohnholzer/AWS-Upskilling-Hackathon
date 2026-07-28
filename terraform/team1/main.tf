@@ -92,6 +92,8 @@ module "ingest_lambda" {
   processed_bucket_arn = module.storage.processed_bucket_arn
   subnet_ids           = local.private_subnet_ids
   security_group_id    = local.lambda_security_group_id
+  kb_id                = module.bedrock_kb.knowledge_base_id
+  kb_data_source_id    = module.bedrock_kb.data_source_id
 
   project_name = var.project_name
   environment  = var.environment
