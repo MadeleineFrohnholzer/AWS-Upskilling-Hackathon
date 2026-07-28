@@ -74,7 +74,7 @@ resource "aws_iam_role_policy" "bedrock_kb" {
           "s3vectors:DeleteVectors",
           "s3vectors:QueryVectors",
         ]
-        Resource = aws_s3vectors_vector_bucket.kb.arn
+        Resource = aws_s3vectors_vector_bucket.kb.vector_bucket_arn
       }
     ]
   })
@@ -93,7 +93,7 @@ resource "aws_bedrockagent_knowledge_base" "main" {
       embedding_model_configuration {
         bedrock_embedding_model_configuration {
           dimensions = local.embedding_dimensions
-          embedding_data_type = local.data_type
+          embedding_data_type = upper(local.data_type)
         }
       }
     }
@@ -103,7 +103,7 @@ resource "aws_bedrockagent_knowledge_base" "main" {
     type = "S3_VECTORS"
     s3_vectors_configuration {
       index_name        = aws_s3vectors_index.kb.index_name
-      vector_bucket_arn = aws_s3vectors_vector_bucket.kb.arn
+      vector_bucket_arn = aws_s3vectors_vector_bucket.kb.vector_bucket_arn
     }
   }
 }
