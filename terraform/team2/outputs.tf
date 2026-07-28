@@ -38,6 +38,11 @@ output "cognito_domain" {
   value       = aws_cognito_user_pool_domain.main.domain
 }
 
+output "ecs_service_name" {
+  description = "ECS service name"
+  value       = aws_ecs_service.open_webui.name
+}
+
 output "chat_target_group_arn" {
   description = "ALB target group ARN for the chat frontend (ECS service attaches here)"
   value       = aws_lb_target_group.chat_frontend.arn

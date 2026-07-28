@@ -40,6 +40,24 @@ variable "proxy_image" {
   default     = ""
 }
 
+variable "bedrock_agent_id" {
+  description = "Bedrock Agent ID (from Issue37 output)"
+  type        = string
+  default     = ""
+}
+
+variable "bedrock_agent_alias_id" {
+  description = "Bedrock Agent alias ID (from Issue37 output)"
+  type        = string
+  default     = ""
+}
+
+variable "bedrock_kb_id" {
+  description = "Bedrock Knowledge Base ID from Team 1"
+  type        = string
+  default     = ""
+}
+
 # -----------------------------------------------------------------------------
 # Cognito / Entra ID SSO variables
 # -----------------------------------------------------------------------------

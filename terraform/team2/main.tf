@@ -57,6 +57,9 @@ data "terraform_remote_state" "team1" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 # Convenience locals from shared/team1 state
 locals {
   vpc_id                      = data.terraform_remote_state.shared.outputs.vpc_id
@@ -64,7 +67,9 @@ locals {
   alb_arn                     = data.terraform_remote_state.shared.outputs.alb_arn
   alb_listener_arn            = data.terraform_remote_state.shared.outputs.alb_listener_arn
   ecs_tasks_security_group_id = data.terraform_remote_state.shared.outputs.ecs_tasks_security_group_id
-  # bedrock_kb_id             = data.terraform_remote_state.team1.outputs.bedrock_kb_id  # uncomment when Team 1 has KB ready
+  account_id                  = data.aws_caller_identity.current.account_id
+  region                      = data.aws_region.current.region
+  container_image             = var.open_webui_image != "" ? var.open_webui_image : "${module.compute.ecr_repository_url}:latest"
 }
 
 # -----------------------------------------------------------------------------
@@ -184,8 +189,92 @@ resource "aws_cognito_user_pool_client" "chat_app" {
 }
 
 # -----------------------------------------------------------------------------
+# ECS Fargate Service behind Internal ALB (issue #39)
+# -----------------------------------------------------------------------------
+
+# SSM SecureString for Open WebUI session-signing key (min 32 chars)
+resource "aws_ssm_parameter" "webui_secret_key" {
+  name  = "/${var.project_name}/open-webui/secret-key"
+  type  = "SecureString"
+  value = "REPLACE_ME_AFTER_FIRST_DEPLOY_MIN_32_CHARS_LONG"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+# Execution role policy - allows pulling SSM SecureString at task startup
+resource "aws_iam_role_policy" "ecs_task_execution_ssm" {
+  name = "ssm-secret-read"
+  role = module.compute.ecs_task_execution_role_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "SSMSecretRead"
+      Effect   = "Allow"
+      Action   = ["ssm:GetParameter", "ssm:GetParameters"]
+      Resource = aws_ssm_parameter.webui_secret_key.arn
+    }]
+  })
+}
+
+# Task role - runtime AWS API calls from inside the container (named platform-*)
+resource "aws_iam_role" "ecs_task" {
+  name = "platform-${var.project_name}-open-webui-task"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "ecs_task" {
+  name = "open-webui-bedrock-ssm"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "BedrockAgentInvoke"
+        Effect = "Allow"
+        Action = [
+          "bedrock-agent-runtime:InvokeAgent",
+          "bedrock-agent-runtime:Retrieve",
+          "bedrock-agent-runtime:RetrieveAndGenerate",
+        ]
+        Resource = [
+          "arn:aws:bedrock:${local.region}:${local.account_id}:agent/${var.bedrock_agent_id}",
+          "arn:aws:bedrock:${local.region}:${local.account_id}:agent-alias/${var.bedrock_agent_id}/*",
+          "arn:aws:bedrock:${local.region}:${local.account_id}:knowledge-base/${var.bedrock_kb_id}",
+        ]
+      },
+      {
+        Sid      = "SSMRead"
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = aws_ssm_parameter.webui_secret_key.arn
+      }
+    ]
+  })
+}
+
+# CloudWatch log group for Open WebUI
+resource "aws_cloudwatch_log_group" "open_webui" {
+  name              = "/ecs/${var.project_name}-open-webui"
+  retention_in_days = 14
+}
+
+# -----------------------------------------------------------------------------
 # ALB Target Group + Cognito Listener Rule (issue #36)
 # -----------------------------------------------------------------------------
+
+# ALB target group - ip type required for Fargate awsvpc networking
 resource "aws_lb_target_group" "chat_frontend" {
   name        = "${var.project_name}-chat-tg"
   port        = 8080
@@ -234,7 +323,93 @@ resource "aws_lb_listener_rule" "chat_frontend" {
   }
 }
 
-# -----------------------------------------------------------------------------
-# TODO: Add these resources during the hackathon
-# -----------------------------------------------------------------------------
-# - ECS Fargate service (register tasks into chat_frontend target group)
+# ECS task definition - Open WebUI with Bedrock Agent env vars
+resource "aws_ecs_task_definition" "open_webui" {
+  family                   = "${var.project_name}-open-webui"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "1024"
+  memory                   = "2048"
+  execution_role_arn       = module.compute.ecs_task_execution_role_arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([{
+    name         = "open-webui"
+    image        = local.container_image
+    portMappings = [{ containerPort = 8080, protocol = "tcp" }]
+    environment = [
+      { name = "WEBUI_AUTH", value = "true" },
+      { name = "ENABLE_SIGNUP", value = "false" },
+      { name = "DEFAULT_USER_ROLE", value = "user" },
+      { name = "AWS_REGION", value = local.region },
+      { name = "BEDROCK_AGENT_ID", value = var.bedrock_agent_id },
+      { name = "BEDROCK_AGENT_ALIAS_ID", value = var.bedrock_agent_alias_id },
+      { name = "KNOWLEDGE_BASE_ID", value = var.bedrock_kb_id },
+    ]
+    secrets = [{
+      name      = "WEBUI_SECRET_KEY"
+      valueFrom = aws_ssm_parameter.webui_secret_key.arn
+    }]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.open_webui.name
+        "awslogs-region"        = local.region
+        "awslogs-stream-prefix" = "open-webui"
+      }
+    }
+    healthCheck = {
+      command     = ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
+  }])
+}
+
+# ECS Fargate service
+resource "aws_ecs_service" "open_webui" {
+  name                 = "${var.project_name}-open-webui"
+  cluster              = module.compute.ecs_cluster_arn
+  task_definition      = aws_ecs_task_definition.open_webui.arn
+  desired_count        = 1
+  launch_type          = "FARGATE"
+  force_new_deployment = true
+
+  network_configuration {
+    subnets          = local.private_subnet_ids
+    security_groups  = [local.ecs_tasks_security_group_id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.chat_frontend.arn
+    container_name   = "open-webui"
+    container_port   = 8080
+  }
+}
+
+# Autoscaling - scale between 1 and 4 tasks based on CPU
+resource "aws_appautoscaling_target" "open_webui" {
+  max_capacity       = 4
+  min_capacity       = 1
+  resource_id        = "service/${module.compute.ecs_cluster_name}/${aws_ecs_service.open_webui.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "open_webui_cpu" {
+  name               = "${var.project_name}-open-webui-cpu-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.open_webui.resource_id
+  scalable_dimension = aws_appautoscaling_target.open_webui.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.open_webui.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+    target_value = 70.0
+  }
+}
