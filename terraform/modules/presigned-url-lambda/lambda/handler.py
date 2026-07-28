@@ -9,14 +9,47 @@ BUCKET = os.environ["LANDING_BUCKET"]
 EXPIRY = int(os.environ.get("PRESIGNED_URL_EXPIRY_SECONDS", "1800"))
 
 VALID_INDUSTRY = {
-    "Banking", "Automotive", "Healthcare", "Energy", "Retail",
-    "Technology", "Insurance", "Telecom", "Other",
+    "FSI",
+    "PRD - Automotive",
+    "PRD - Life Science",
+    "PRD - Industrial",
+    "PRD - Consumer Goods",
+    "CMT",
+    "H&PS",
+    "RES",
+    "Other",
 }
-VALID_TYPE = {
-    "PoC", "RFP", "Case Study", "Proposal", "Architecture",
-    "Strategy", "Report", "Other",
+VALID_DOCUMENT_TYPE = {
+    "Architecture",
+    "Discussion Deck",
+    "RFP",
+    "Proposal",
+    "PoC",
+    "Case Study",
+    "Statement of Work (SOW)",
+    "Assessment / Diagnostic",
+    "Roadmap",
+    "Runbook",
+    "Executive Summary",
+    "Point of View / Whitepaper",
+    "Other",
 }
-OPTIONAL_FIELDS = ("Project", "Client", "Topic", "UploadedBy", "UploadedAt")
+VALID_USE_CASE = {
+    "DB Migration",
+    "Cloud Migration",
+    "Data & Analytics Platform",
+    "GenAI / AI Agent",
+    "Application Modernization",
+    "Cybersecurity",
+    "ERP Implementation",
+    "Infrastructure Optimization / FinOps",
+    "DevOps / Platform Engineering",
+    "Digital Transformation",
+    "Managed Services",
+    "Disaster Recovery / Resilience",
+    "Other",
+}
+OPTIONAL_FIELDS = ("UseCase", "Client", "UploadedBy", "UploadedAt")
 
 
 def _validate(body):
@@ -32,11 +65,15 @@ def _validate(body):
     elif industry not in VALID_INDUSTRY:
         errors.append(f"'Industry' must be one of: {sorted(VALID_INDUSTRY)}")
 
-    doc_type = body.get("Type")
+    doc_type = body.get("DocumentType")
     if not doc_type:
-        errors.append("'Type' is required")
-    elif doc_type not in VALID_TYPE:
-        errors.append(f"'Type' must be one of: {sorted(VALID_TYPE)}")
+        errors.append("'DocumentType' is required")
+    elif doc_type not in VALID_DOCUMENT_TYPE:
+        errors.append(f"'DocumentType' must be one of: {sorted(VALID_DOCUMENT_TYPE)}")
+
+    use_case = body.get("UseCase")
+    if use_case and use_case not in VALID_USE_CASE:
+        errors.append(f"'UseCase' must be one of: {sorted(VALID_USE_CASE)}")
 
     return errors, filename, industry, doc_type
 
@@ -51,7 +88,7 @@ def handler(event, _context):
     if errors:
         return _resp(400, {"errors": errors})
 
-    metadata = {"Industry": industry, "Type": doc_type}
+    metadata = {"Industry": industry, "DocumentType": doc_type}
     for field in OPTIONAL_FIELDS:
         if field in body:
             metadata[field] = body[field]
