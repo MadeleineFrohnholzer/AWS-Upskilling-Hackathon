@@ -67,3 +67,33 @@ variable "bedrock_agent_alias_id" {
   type        = string
   default     = ""
 }
+
+variable "ecs_service_name" {
+  description = "ECS service name for the CPU alarm dimension. Leave empty until the ECS service is created."
+  type        = string
+  default     = ""
+}
+
+variable "alarm_5xx_threshold_pct" {
+  description = "ALB 5xx error rate (%) that triggers the alarm"
+  type        = number
+  default     = 1.0
+}
+
+variable "alarm_latency_p95_seconds" {
+  description = "ALB P95 response time in seconds that triggers the alarm"
+  type        = number
+  default     = 20
+}
+
+variable "alarm_cpu_threshold_pct" {
+  description = "ECS CPU utilisation (%) that triggers the alarm"
+  type        = number
+  default     = 80
+}
+
+variable "alarm_actions" {
+  description = "List of SNS topic ARNs to notify when an alarm changes state"
+  type        = list(string)
+  default     = []
+}

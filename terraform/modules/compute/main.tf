@@ -160,11 +160,203 @@ resource "aws_ecs_task_definition" "chat_frontend" {
 }
 
 # -----------------------------------------------------------------------------
-# CloudWatch Log Group
+# CloudWatch Log Groups
 # -----------------------------------------------------------------------------
 resource "aws_cloudwatch_log_group" "chat_frontend" {
   name              = "/ecs/${var.project_name}-chat-frontend"
   retention_in_days = 14
+}
+
+resource "aws_cloudwatch_log_group" "open_webui" {
+  name              = "/ecs/${var.project_name}-open-webui"
+  retention_in_days = 14
+}
+
+# -----------------------------------------------------------------------------
+# CloudWatch Metric Alarms
+# -----------------------------------------------------------------------------
+
+# ALB 5xx error rate > 1% over 5 minutes (metric math: 5xx / total * 100)
+resource "aws_cloudwatch_metric_alarm" "alb_5xx_rate" {
+  alarm_name          = "${var.project_name}-alb-5xx-rate-high"
+  alarm_description   = "ALB target 5xx error rate exceeded ${var.alarm_5xx_threshold_pct}% over 5 minutes"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = var.alarm_5xx_threshold_pct
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_actions
+
+  metric_query {
+    id          = "e1"
+    expression  = "m2/m1*100"
+    label       = "5xx Error Rate (%)"
+    return_data = true
+  }
+
+  metric_query {
+    id = "m1"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "RequestCount"
+      period      = 300
+      stat        = "Sum"
+      dimensions  = { LoadBalancer = aws_lb.internal.arn_suffix }
+    }
+  }
+
+  metric_query {
+    id = "m2"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "HTTPCode_Target_5XX_Count"
+      period      = 300
+      stat        = "Sum"
+      dimensions  = { LoadBalancer = aws_lb.internal.arn_suffix }
+    }
+  }
+}
+
+# ALB target response time P95 > 20 seconds
+resource "aws_cloudwatch_metric_alarm" "alb_latency_p95" {
+  alarm_name          = "${var.project_name}-alb-latency-p95-high"
+  alarm_description   = "ALB target response time P95 exceeded ${var.alarm_latency_p95_seconds}s over 5 minutes"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = var.alarm_latency_p95_seconds
+  treat_missing_data  = "notBreaching"
+  metric_name         = "TargetResponseTime"
+  namespace           = "AWS/ApplicationELB"
+  period              = 300
+  extended_statistic  = "p95"
+  alarm_actions       = var.alarm_actions
+
+  dimensions = {
+    LoadBalancer = aws_lb.internal.arn_suffix
+  }
+}
+
+# ECS service CPU utilisation > 80% — dimensions filled once ECS service is deployed
+resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
+  alarm_name          = "${var.project_name}-ecs-cpu-high"
+  alarm_description   = "ECS service CPU utilisation exceeded ${var.alarm_cpu_threshold_pct}%"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = var.alarm_cpu_threshold_pct
+  treat_missing_data  = "missing"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = 300
+  statistic           = "Average"
+  alarm_actions       = var.alarm_actions
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.main.name
+    ServiceName = var.ecs_service_name
+  }
+}
+
+# -----------------------------------------------------------------------------
+# CloudWatch Dashboard
+# -----------------------------------------------------------------------------
+resource "aws_cloudwatch_dashboard" "main" {
+  dashboard_name = "${var.project_name}-app"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ECS CPU Utilization (%)"
+          view   = "timeSeries"
+          region = data.aws_region.current.name
+          metrics = [
+            ["AWS/ECS", "CPUUtilization", "ClusterName", aws_ecs_cluster.main.name, { stat = "Average", period = 60, label = "CPU avg" }]
+          ]
+          yAxis = { left = { min = 0, max = 100 } }
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ECS Memory Utilization (%)"
+          view   = "timeSeries"
+          region = data.aws_region.current.name
+          metrics = [
+            ["AWS/ECS", "MemoryUtilization", "ClusterName", aws_ecs_cluster.main.name, { stat = "Average", period = 60, label = "Memory avg" }]
+          ]
+          yAxis = { left = { min = 0, max = 100 } }
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 8
+        height = 6
+        properties = {
+          title  = "ALB Request Count"
+          view   = "timeSeries"
+          region = data.aws_region.current.name
+          metrics = [
+            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.internal.arn_suffix, { stat = "Sum", period = 60 }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 8
+        y      = 6
+        width  = 8
+        height = 6
+        properties = {
+          title  = "ALB 5xx Errors"
+          view   = "timeSeries"
+          region = data.aws_region.current.name
+          metrics = [
+            ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", aws_lb.internal.arn_suffix, { stat = "Sum", period = 60, color = "#d62728" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 16
+        y      = 6
+        width  = 8
+        height = 6
+        properties = {
+          title  = "ALB Response Time P95 (s)"
+          view   = "timeSeries"
+          region = data.aws_region.current.name
+          metrics = [
+            ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", aws_lb.internal.arn_suffix, { extendedStatistic = "p95", period = 60, label = "p95" }]
+          ]
+        }
+      },
+      {
+        type   = "alarm"
+        x      = 0
+        y      = 12
+        width  = 24
+        height = 4
+        properties = {
+          title = "Active Alarms"
+          alarms = [
+            aws_cloudwatch_metric_alarm.alb_5xx_rate.arn,
+            aws_cloudwatch_metric_alarm.alb_latency_p95.arn,
+            aws_cloudwatch_metric_alarm.ecs_cpu.arn,
+          ]
+        }
+      }
+    ]
+  })
 }
 
 # -----------------------------------------------------------------------------
