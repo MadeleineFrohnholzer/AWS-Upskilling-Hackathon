@@ -69,21 +69,6 @@ aws sts get-caller-identity --profile hackathon
   ```
 - Each squad works on feature branches, merges via PR
 
-### 4. Terraform Backend (Pre-provisioned)
-
-The remote state backend (S3 bucket + DynamoDB lock table) will be provisioned before Day 1. State is split by squad during the hackathon so each team can apply independently without blocking the other; states are intended to merge into a single project once the build reaches maturity post-hackathon. You'll configure it as:
-
-```hcl
-terraform {
-  backend "s3" {
-    bucket         = "hackathon-tf-state-064453091991"
-    key            = "<foundation|team-m0|team-m1>/terraform.tfstate"
-    region         = "eu-central-1"
-    dynamodb_table = "hackathon-tf-locks"
-    encrypt        = true
-  }
-}
-```
 
 ---
 
