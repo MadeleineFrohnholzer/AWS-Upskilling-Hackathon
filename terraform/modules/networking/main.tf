@@ -358,14 +358,14 @@ resource "aws_security_group" "alb" {
 # Internal Application Load Balancer
 # -----------------------------------------------------------------------------
 resource "aws_lb" "internal" {
-  name               = "internal-load-balancer"
+  name               = "platform-alb"
   internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.private[*].id
 
   tags = {
-    Name = "internal-load-balancer"
+    Name = "platform-alb"
   }
 }
 
