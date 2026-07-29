@@ -3,11 +3,11 @@
 # =============================================================================
 
 locals {
-  kb_name             = "content-knowledge-base"
-  embedding_model_arn = "arn:aws:bedrock:${var.region}::foundation-model/amazon.titan-embed-text-v2:0"
+  kb_name              = "content-knowledge-base"
+  embedding_model_arn  = "arn:aws:bedrock:${var.region}::foundation-model/amazon.titan-embed-text-v2:0"
   embedding_dimensions = 1024
-  distance_metric     = "cosine"
-  data_type           = "float32"
+  distance_metric      = "cosine"
+  data_type            = "float32"
 }
 
 # ── IAM ──────────────────────────────────────────────────────────────────────
@@ -54,8 +54,8 @@ resource "aws_iam_role_policy" "bedrock_kb" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["bedrock:InvokeModel"]
+        Effect   = "Allow"
+        Action   = ["bedrock:InvokeModel"]
         Resource = [local.embedding_model_arn]
       },
       {
@@ -95,7 +95,7 @@ resource "aws_bedrockagent_knowledge_base" "main" {
       embedding_model_arn = local.embedding_model_arn
       embedding_model_configuration {
         bedrock_embedding_model_configuration {
-          dimensions = local.embedding_dimensions
+          dimensions          = local.embedding_dimensions
           embedding_data_type = upper(local.data_type)
         }
       }

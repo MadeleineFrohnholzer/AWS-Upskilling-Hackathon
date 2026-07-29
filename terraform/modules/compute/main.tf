@@ -96,7 +96,7 @@ locals {
   # Open WebUI env vars that point it at the local proxy when the proxy is enabled
   webui_proxy_env = var.bedrock_agent_id != "" ? [
     { name = "OPENAI_API_BASE_URL", value = "http://localhost:${var.proxy_port}/v1" },
-    { name = "OPENAI_API_KEY",      value = "bedrock" },
+    { name = "OPENAI_API_KEY", value = "bedrock" },
   ] : []
 
   chat_container = {
@@ -125,9 +125,9 @@ locals {
       protocol      = "tcp"
     }]
     environment = [
-      { name = "BEDROCK_AGENT_ID",       value = var.bedrock_agent_id },
+      { name = "BEDROCK_AGENT_ID", value = var.bedrock_agent_id },
       { name = "BEDROCK_AGENT_ALIAS_ID", value = var.bedrock_agent_alias_id },
-      { name = "AWS_REGION",             value = data.aws_region.current.id },
+      { name = "AWS_REGION", value = data.aws_region.current.id },
     ]
     logConfiguration = {
       logDriver = "awslogs"
