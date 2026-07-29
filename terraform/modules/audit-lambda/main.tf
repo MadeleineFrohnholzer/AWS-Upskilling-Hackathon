@@ -3,7 +3,7 @@
 # =============================================================================
 # Triggered by S3 ObjectCreated on the processed bucket.
 # .metadata.json events → upsert with all metadata fields.
-# All other events     → upsert with filename + timestamps only.
+# All other events → upsert with filename + timestamps only.
 
 # ── IAM ──────────────────────────────────────────────────────────────────────
 

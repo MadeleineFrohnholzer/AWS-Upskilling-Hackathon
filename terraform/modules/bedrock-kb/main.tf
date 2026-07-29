@@ -13,7 +13,7 @@ locals {
 # ── IAM ──────────────────────────────────────────────────────────────────────
 
 resource "aws_iam_role" "bedrock_kb" {
-  name = "platform-${local.kb_name}"
+  name = "platform-bedrock-knowledge-base"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -35,7 +35,7 @@ data "aws_caller_identity" "current" {}
 # ── S3 Vectors ────────────────────────────────────────────────────────────────
 
 resource "aws_s3vectors_vector_bucket" "kb" {
-  vector_bucket_name = "content-knowledge-base"
+  vector_bucket_name = "content-vector-store"
 }
 
 resource "aws_s3vectors_index" "kb" {
