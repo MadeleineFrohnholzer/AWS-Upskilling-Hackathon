@@ -41,7 +41,7 @@ locals {
   ecs_tasks_security_group_id = module.networking.ecs_tasks_security_group_id
   account_id                  = data.aws_caller_identity.current.account_id
   region                      = data.aws_region.current.region
-  container_image             = var.open_webui_image != "" ? var.open_webui_image : "${module.compute.ecr_repository_url}:latest"
+  container_image             = var.chat_ui_image != "" ? var.chat_ui_image : "${module.compute.ecr_repository_url}:latest"
 }
 
 # =============================================================================
@@ -153,7 +153,7 @@ module "compute" {
   vpc_id                 = local.vpc_id
   private_subnet_ids     = local.private_subnet_ids
   alb_arn                = local.alb_arn
-  container_image        = var.open_webui_image
+  container_image        = var.chat_ui_image
   proxy_image            = var.proxy_image
   bedrock_agent_id       = module.bedrock_agent.agent_id
   bedrock_agent_alias_id = module.bedrock_agent.agent_alias_id
@@ -282,7 +282,7 @@ resource "aws_iam_role" "ecs_task" {
 }
 
 resource "aws_iam_role_policy" "ecs_task" {
-  name = "open-webui-bedrock-ssm"
+  name = "chat-ui-permissions"
   role = aws_iam_role.ecs_task.id
 
   policy = jsonencode({
@@ -301,6 +301,25 @@ resource "aws_iam_role_policy" "ecs_task" {
           "arn:aws:bedrock:${local.region}:${local.account_id}:agent-alias/${module.bedrock_agent.agent_id}/*",
           "arn:aws:bedrock:${local.region}:${local.account_id}:knowledge-base/${module.bedrock_kb.knowledge_base_id}",
         ]
+      },
+      {
+        Sid    = "DynamoDBChatHistory"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:Query",
+        ]
+        Resource = [
+          data.terraform_remote_state.team1.outputs.chat_history_table_arn,
+          "${data.terraform_remote_state.team1.outputs.chat_history_table_arn}/index/*",
+        ]
+      },
+      {
+        Sid      = "LambdaPresignedUrl"
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = [data.terraform_remote_state.team1.outputs.presigned_url_lambda_arn]
       },
       {
         Sid      = "SSMRead"
@@ -323,14 +342,14 @@ resource "aws_cloudwatch_log_group" "open_webui" {
 
 resource "aws_lb_target_group" "chat_frontend" {
   name        = "chat-application-tg"
-  port        = 8080
+  port        = 3000
   protocol    = "HTTP"
   vpc_id      = local.vpc_id
   target_type = "ip"
 
   health_check {
     enabled             = true
-    path                = "/health"
+    path                = "/api/health"
     protocol            = "HTTP"
     healthy_threshold   = 2
     unhealthy_threshold = 3
@@ -400,32 +419,28 @@ resource "aws_ecs_task_definition" "open_webui" {
   task_role_arn            = aws_iam_role.ecs_task.arn
 
   container_definitions = jsonencode([{
-    name         = "open-webui"
+    name         = "chat-frontend"
     image        = local.container_image
-    portMappings = [{ containerPort = 8080, protocol = "tcp" }]
+    portMappings = [{ containerPort = 3000, protocol = "tcp" }]
     environment = [
-      { name = "WEBUI_AUTH", value = "true" },
-      { name = "ENABLE_SIGNUP", value = "false" },
-      { name = "DEFAULT_USER_ROLE", value = "user" },
       { name = "AWS_REGION", value = local.region },
       { name = "BEDROCK_AGENT_ID", value = module.bedrock_agent.agent_id },
       { name = "BEDROCK_AGENT_ALIAS_ID", value = module.bedrock_agent.agent_alias_id },
       { name = "KNOWLEDGE_BASE_ID", value = module.bedrock_kb.knowledge_base_id },
+      { name = "DYNAMODB_TABLE", value = module.storage.chat_history_table_name },
+      { name = "PRESIGNED_URL_LAMBDA_NAME", value = module.presigned_url_lambda.lambda_function_name },
+      { name = "NEXT_PUBLIC_APP_NAME", value = "Knowledge Assistant" },
     ]
-    secrets = [{
-      name      = "WEBUI_SECRET_KEY"
-      valueFrom = aws_ssm_parameter.webui_secret_key.arn
-    }]
     logConfiguration = {
       logDriver = "awslogs"
       options = {
         "awslogs-group"         = aws_cloudwatch_log_group.open_webui.name
         "awslogs-region"        = local.region
-        "awslogs-stream-prefix" = "open-webui"
+        "awslogs-stream-prefix" = "chat-frontend"
       }
     }
     healthCheck = {
-      command     = ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      command     = ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
       interval    = 30
       timeout     = 5
       retries     = 3
@@ -450,8 +465,8 @@ resource "aws_ecs_service" "open_webui" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.chat_frontend.arn
-    container_name   = "open-webui"
-    container_port   = 8080
+    container_name   = "chat-frontend"
+    container_port   = 3000
   }
 }
 

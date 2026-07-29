@@ -18,6 +18,37 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
+  # Detect which team directories changed
+  # ─────────────────────────────────────────────────────────────────────────────
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      shared: ${{ steps.filter.outputs.shared }}
+      team1: ${{ steps.filter.outputs.team1 }}
+      team2: ${{ steps.filter.outputs.team2 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared:
+              - 'terraform/shared/**'
+              - 'terraform/modules/networking/**'
+            team1:
+              - 'terraform/team1/**'
+              - 'terraform/modules/storage/**'
+              - 'terraform/modules/presigned-url-lambda/**'
+              - 'terraform/modules/ingest-lambda/**'
+              - 'terraform/modules/bedrock-kb/**'
+              - 'terraform/modules/audit-lambda/**'
+            team2:
+              - 'terraform/team2/**'
+              - 'terraform/modules/compute/**'
+              - 'chat-ui/**'
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # Plan (on PR)
   # ─────────────────────────────────────────────────────────────────────────────
   plan:

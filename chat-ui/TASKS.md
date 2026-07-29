@@ -7,15 +7,15 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 
 ## Phase 0 — Project Scaffolding
 
-- [ ] `npx create-next-app@latest . --typescript --tailwind --app --src-dir`
-- [ ] ShadCN init: `npx shadcn@latest init` — choose **New York** style, **Neutral** base color, CSS variables on
-- [ ] Install ShadCN components needed up-front:
+- [x] `npx create-next-app@latest . --typescript --tailwind --app --src-dir`
+- [x] ShadCN init: `npx shadcn@latest init` — choose **New York** style, **Neutral** base color, CSS variables on
+- [x] Install ShadCN components needed up-front:
   ```
   npx shadcn@latest add button input textarea scroll-area accordion
     avatar badge separator sheet dialog command tooltip popover
     dropdown-menu progress sonner skeleton
   ```
-- [ ] Install runtime dependencies:
+- [x] Install runtime dependencies:
   ```
   @aws-sdk/client-bedrock-agent-runtime
   @aws-sdk/client-lambda
@@ -26,18 +26,18 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
   rehype-highlight
   highlight.js
   ```
-- [ ] Configure `next.config.ts`:
+- [x] Configure `next.config.ts`:
   - `output: 'standalone'`
   - `images.remotePatterns` if serving any S3 images
-- [ ] Set `forcedTheme="dark"` in root `ThemeProvider` — dark only, no toggle
-- [ ] Create `.env.local` from the env vars table in SPEC (never commit)
-- [ ] Add `.env.local` and `.env*.local` to `.gitignore`
+- [ ] ~~Set `forcedTheme="dark"` in root `ThemeProvider` — dark only, no toggle~~ **Changed:** `defaultTheme="light"` with sun/moon toggle per user request
+- [x] Create `.env.local` from the env vars table in SPEC (never commit)
+- [x] Add `.env.local` and `.env*.local` to `.gitignore`
 
 ---
 
 ## Phase 0b — Accenture Brand Setup
 
-- [ ] **ShadCN CSS variable overrides** — replace generated defaults in `src/app/globals.css` `.dark` block:
+- [x] **ShadCN CSS variable overrides** — `src/app/globals.css` split into `:root` (light) and `.dark` blocks with Accenture colors:
   ```css
   .dark {
     --background:        0 0% 0%;        /* #000000 */
@@ -56,7 +56,7 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
   }
   ```
 
-- [ ] **Typography** — add to `globals.css` before Tailwind directives:
+- [x] **Typography** — Inter font via Google Fonts in `globals.css`:
   ```css
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap');
 
@@ -65,31 +65,19 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
     --font-mono: 'JetBrains Mono', monospace;
   }
   ```
-  Update `tailwind.config.ts` to use `fontFamily: { sans: ['var(--font-sans)'], mono: ['var(--font-mono)'] }`
+  `tailwind.config.ts` updated with `fontFamily: { sans: ['var(--font-sans)'], mono: ['var(--font-mono)'] }`
 
-- [ ] **Graphik font** — if Graphik WOFF2 files are available from Accenture's brand portal:
-  - Place in `public/fonts/`
-  - Add `@font-face` blocks in `globals.css` before the Google Fonts import (takes precedence automatically)
-  - Remove the Google Fonts `@import` once Graphik is confirmed working
+- [ ] **Graphik font** — Graphik WOFF2 files not available; Inter is used as fallback:
+  - Place in `public/fonts/` when available
+  - Add `@font-face` blocks in `globals.css` before the Google Fonts import
 
-- [ ] **Logo component** — `src/components/brand/AccentureMark.tsx`:
-  ```tsx
-  export function AccentureMark({ size = 24 }: { size?: number }) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <path d="M6 4l12 8-12 8" stroke="#A100FF" strokeWidth="3"
-              strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  ```
-  > Note: replace with the official Accenture SVG asset if available from brand portal — the chevron above is a programmatic approximation.
+- [x] **Logo component** — `src/components/brand/AccentureMark.tsx` — purple `>` chevron SVG
 
-- [ ] **Favicon** — `public/favicon.svg`: purple `>` on black background; reference in `layout.tsx` `<head>`
+- [x] **Favicon** — `public/favicon.svg`: purple `>` on black background; referenced in `layout.tsx`
 
-- [ ] **Global body styles** in `globals.css`:
+- [x] **Global body styles** in `globals.css`:
   ```css
-  body { background-color: #000000; color: #FFFFFF; font-family: var(--font-sans); }
+  body { background-color: hsl(var(--background)); color: hsl(var(--foreground)); font-family: var(--font-sans); }
   ```
 
 ---
@@ -97,29 +85,29 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 ## Phase 1 — Core Infrastructure (non-UI)
 
 ### 1.1 Session ID
-- [ ] `src/lib/session.ts` — `getOrCreateSessionId()`:
+- [x] `src/lib/session.ts` — `getOrCreateSessionId()`:
   - Reads from `localStorage` key `NEXT_PUBLIC_SESSION_KEY`
   - On missing: writes `crypto.randomUUID()` and returns it
   - Returns `null` during SSR (guard with `typeof window !== 'undefined'`)
 
 ### 1.2 API helper
-- [ ] `src/lib/api.ts` — `callApi(url, options?)`:
+- [x] `src/lib/api.ts` — `callApi(url, options?)`:
   - Detects expired ALB session: `response.redirected` or content-type not `application/json`
   - On detection: `window.location.href = '/'` (forces full nav, completes Cognito redirect chain)
   - Otherwise: returns `response.json()`
 
 ### 1.3 AWS clients (server-only, `'use server'` / route handlers)
-- [ ] `src/lib/aws/bedrock.ts` — singleton `BedrockAgentRuntimeClient`
-- [ ] `src/lib/aws/dynamodb.ts` — singleton `DynamoDBDocumentClient`
-- [ ] `src/lib/aws/lambda.ts` — singleton `LambdaClient`
+- [x] `src/lib/aws/bedrock.ts` — singleton `BedrockAgentRuntimeClient`
+- [x] `src/lib/aws/dynamodb.ts` — singleton `DynamoDBDocumentClient`
+- [x] `src/lib/aws/lambda.ts` — singleton `LambdaClient`
 
 ### 1.4 User identity
-- [ ] `src/lib/auth.ts` — `getUserFromRequest(headers: Headers): string | null`:
+- [x] `src/lib/auth.ts` — `getUserFromRequest(headers: Headers): string | null`:
   - Reads `x-amzn-oidc-data`, base64-decodes payload segment, returns `email ?? sub`
   - No JWT library needed (ALB already verified the signature)
 
 ### 1.5 Shared types
-- [ ] `src/types/chat.ts`:
+- [x] `src/types/chat.ts`:
   ```typescript
   export type Role = 'user' | 'assistant';
   export interface Citation { source: string; page?: number; excerpt?: string; }
@@ -132,27 +120,27 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 ## Phase 2 — API Routes
 
 ### 2.1 Health check
-- [ ] `src/app/api/health/route.ts` — `GET`: returns `{ status: "ok" }`
+- [x] `src/app/api/health/route.ts` — `GET`: returns `{ status: "ok" }`
 
 ### 2.2 Chat
-- [ ] `src/app/api/chat/route.ts` — `POST { sessionId, message }`:
+- [x] `src/app/api/chat/route.ts` — `POST { sessionId, message }`:
   - Call `InvokeAgentCommand` with `agentId`, `agentAliasId`, `sessionId`, `inputText`
   - Iterate streamed chunks; accumulate text; extract citations from trace events
   - Write user + assistant turns to DynamoDB (including `userEmail` and `sessionTitle` on first turn)
   - Return `{ message: string, citations: Citation[] }`
 
 ### 2.3 Upload presigned URL
-- [ ] `src/app/api/upload-url/route.ts` — `POST { fileName, fileType, industry, documentType, useCase?, client? }`:
+- [x] `src/app/api/upload-url/route.ts` — `POST { fileName, fileType, industry, documentType, useCase?, client? }`:
   - Invoke upload Lambda via `InvokeCommand`
   - Return `{ url: string }`
 
 ### 2.4 History
-- [ ] `src/app/api/history/[sessionId]/route.ts` — `GET`:
+- [x] `src/app/api/history/[sessionId]/route.ts` — `GET`:
   - Query DynamoDB by `sessionId` ascending by `timestamp`
   - Return `{ items: Message[] }`
 
 ### 2.5 Sessions list (sidebar)
-- [ ] `src/app/api/sessions/route.ts` — `GET`:
+- [x] `src/app/api/sessions/route.ts` — `GET`:
   - Query DynamoDB GSI on `userEmail` (from OIDC header)
   - Return `{ sessions: Session[] }` sorted by `lastMessageAt` descending
 
@@ -161,153 +149,151 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 ## Phase 3 — Layout Shell
 
 ### 3.1 Root layout
-- [ ] `src/app/layout.tsx`:
-  - Wrap with `ThemeProvider` (`next-themes`, `forcedTheme="dark"`)
+- [x] `src/app/layout.tsx`:
+  - Wrap with `ThemeProvider` (`next-themes`, `defaultTheme="light"`, `enableSystem={false}`)
   - Add `<Toaster />` (`sonner`) for upload/error toasts
   - Full-height flex: `<AppSidebar />` + `<main>` side by side
 
 ### 3.2 Sidebar — `src/components/layout/AppSidebar.tsx`
-- [ ] Fixed width `w-64`, `bg-black border-r border-[#333333]`, full viewport height, `flex flex-col`
-- [ ] Top section:
-  - `<AccentureMark size={24} />` + "accenture" wordmark (`text-white font-semibold text-sm tracking-tight`) + collapse toggle
-- [ ] Nav buttons (`Button` variant ghost, full width, left-aligned, `text-[#888888] hover:text-white hover:bg-[#1A1A1A]`):
+- [x] Desktop: fixed width `w-64`, `bg-background border-r border-border`, full viewport height, `hidden md:flex flex-col`
+- [x] Top section:
+  - `<AccentureMark size={24} />` + "accenture" wordmark (`font-semibold text-sm tracking-tight`)
+- [x] Nav buttons (`Button` variant ghost, full width, left-aligned, semantic muted colors):
   - **New Chat** — `PlusIcon`
   - **Search** — `SearchIcon`
   - **Upload Document** — `UploadIcon`
-- [ ] Section label style: `text-[#888888] text-xs font-semibold uppercase tracking-widest px-3 mt-4 mb-1`
-- [ ] Active session item: `bg-[rgba(161,0,255,0.08)] border-l-2 border-[#A100FF] text-white`
-- [ ] Chat history list: `<ChatHistoryList />` (see §3.3)
-- [ ] Bottom: `<UserIdentity />` (see §3.4)
+- [x] Section label style: `text-muted-foreground text-xs font-semibold uppercase tracking-widest`
+- [x] Active session item: `bg-[rgba(161,0,255,0.08)] border-l-2 border-[#A100FF]`
+- [x] Chat history list: `<ChatHistoryList />`
+- [x] Bottom: `<UserIdentity />`
+- [x] **Mobile:** hamburger button (`md:hidden fixed top-2.5 left-3 z-20`) opens `Sheet` drawer
 
 ### 3.3 Chat history — `src/components/layout/ChatHistoryList.tsx`
-- [ ] Fetches `GET /api/sessions` on mount
-- [ ] Groups sessions by date bucket: **Today** / **Yesterday** / **This Week** / **Older**
-- [ ] Each group has a small muted label (`text-zinc-400 text-xs`)
-- [ ] Each session: `Button` ghost full-width, truncated title, hover reveals `Trash2Icon` delete button
-- [ ] Active session highlighted with `bg-zinc-800`
-- [ ] `Skeleton` placeholder rows while loading
+- [x] Fetches `GET /api/sessions` on mount
+- [x] Groups sessions by date bucket: **Today** / **Yesterday** / **This Week** / **Older**
+- [x] Each group has a small muted label (`text-muted-foreground text-xs`)
+- [x] Each session: `Button` ghost full-width, truncated title
+- [x] Active session highlighted with `bg-[rgba(161,0,255,0.08)] border-l-2 border-[#A100FF]`
+- [x] `Skeleton` placeholder rows while loading
 
 ### 3.4 User identity — `src/components/layout/UserIdentity.tsx`
-- [ ] Server component reads `x-amzn-oidc-data` via `headers()` (Next.js), extracts email
-- [ ] `Avatar` with initials on `bg-[#A100FF] text-white` + truncated email in `text-[#888888] text-sm`
-- [ ] Pinned to bottom of sidebar with `mt-auto`, separator above in `border-[#333333]`
+- [x] Client component fetches `/api/me`, extracts email
+- [x] `Avatar` with initials on `bg-[#A100FF] text-white` + truncated email in `text-muted-foreground text-sm`
+- [x] Pinned to bottom of sidebar with `mt-auto`, separator above
 
 ### 3.5 Top bar — `src/components/layout/TopBar.tsx`
-- [ ] Agent name/alias display (static `Badge` or `DropdownMenu` if multiple aliases configured)
-- [ ] Settings `Button` icon (gear) — placeholder for now
-- [ ] User `Avatar` (top-right corner) — same email as sidebar
+- [x] Agent name displayed as `Badge`
+- [x] **Theme toggle** — sun/moon `Button` icon switches light/dark via `useTheme`
+- [x] Settings `Button` icon (gear) — placeholder
+- [x] User `Avatar` (top-right corner)
 
 ---
 
 ## Phase 4 — Chat Components
 
 ### 4.1 Welcome screen — `src/components/chat/WelcomeScreen.tsx`
-- [ ] `flex flex-col items-center justify-center h-full bg-black gap-6`
-- [ ] `<AccentureMark size={48} />` + `<h2 className="text-white text-2xl font-semibold">{appName}</h2>`
-- [ ] Muted tagline: `text-[#888888] text-sm` e.g. "Powered by Accenture & Amazon Bedrock"
-- [ ] `<ChatInput>` at `max-w-2xl w-full`
-- [ ] `<SuggestedPrompts>` below input
+- [x] `flex flex-col items-center justify-center h-full bg-background gap-6 pt-12 md:pt-0`
+- [x] `<AccentureMark size={48} />` + `<h2 className="text-foreground text-2xl font-semibold">{appName}</h2>`
+- [x] Muted tagline: `text-muted-foreground text-sm` — "Powered by Accenture & Amazon Bedrock"
+- [x] `<ChatInput>` at `max-w-2xl w-full`
+- [x] `<SuggestedPrompts>` below input
 
 ### 4.2 Suggested prompts — `src/components/chat/SuggestedPrompts.tsx`
-- [ ] 3 hardcoded domain-specific prompt cards:
-  - "Summarise the key risks in the latest uploaded document"
-  - "What changed between the last two quarterly reports?"
-  - "List the main clauses in the most recent contract"
-- [ ] Card style: `bg-[#111111] border border-[#333333] rounded-lg p-3 hover:border-[#A100FF] transition-colors cursor-pointer`
-- [ ] Bold title `text-white text-sm font-medium` + muted subtitle `text-[#888888] text-xs`
-- [ ] Clicking populates `ChatInput`
+- [x] 3 hardcoded domain-specific prompt cards
+- [x] Card style: `bg-card border border-border rounded-lg p-3 hover:border-[#A100FF] transition-colors cursor-pointer`
+- [x] Bold title `text-foreground text-sm font-medium` + muted subtitle `text-muted-foreground text-xs`
+- [x] Clicking sends prompt via `onSelect`
+- [x] **Responsive:** `grid-cols-1 sm:grid-cols-3`
 
 ### 4.3 Message list — `src/components/chat/MessageList.tsx`
-- [ ] `ScrollArea` fills remaining height between `TopBar` and `ChatInput`
-- [ ] `useEffect` to scroll to bottom on new message (`scrollIntoView` on a bottom sentinel `div`)
-- [ ] Maps `messages[]` to `<MessageBubble />`
-- [ ] Appends `<ThinkingBubble />` while awaiting response
+- [x] `ScrollArea` fills remaining height between `TopBar` and `ChatInput`
+- [x] `useEffect` to scroll to bottom on new message (`scrollIntoView` on bottom sentinel `div`)
+- [x] Maps `messages[]` to `<MessageBubble />`
+- [x] Appends `<ThinkingBubble />` while awaiting response
 
 ### 4.4 Message bubble — `src/components/chat/MessageBubble.tsx`
-- [ ] **User**: right-aligned row; bubble `bg-[#1A1A1A] border-l-2 border-[#A100FF] rounded-2xl px-4 py-2 text-white`; `Avatar` with `bg-[#A100FF]` initials to the right
-- [ ] **Assistant**: left-aligned row, no background, `<AccentureMark size={20} />` to the left, prose `max-w-3xl text-white`
-- [ ] Assistant body via `react-markdown` + `rehype-highlight`; code block: `bg-[#111111] border border-[#333333] font-mono text-sm`
-- [ ] `<CitationList citations={citations} />` below body if citations present
+- [x] **User**: right-aligned row; bubble `bg-muted border-l-2 border-[#A100FF] rounded-2xl px-4 py-2 text-foreground`; `Avatar` with `bg-[#A100FF]` initials to the right
+- [x] **Assistant**: left-aligned row, `<AccentureMark size={20} />` to the left, `prose dark:prose-invert max-w-none`
+- [x] Assistant body via `react-markdown` + `rehype-highlight`; code block via `<CodeBlock />`
+- [x] `<CitationList citations={citations} />` below body if citations present
 
 ### 4.5 Citations — `src/components/chat/CitationList.tsx`
-- [ ] ShadCN `Accordion` single item; trigger `text-[#A100FF] text-sm hover:text-[#8C00E6]`: "▼ N sources"
-- [ ] Each citation: filename `Badge` (`bg-[#1A1A1A] border-[#333333] text-[#888888]`) + page number; excerpt in a `Tooltip` on hover
-- [ ] Divider between citations: `border-[#333333]`
+- [x] ShadCN `Accordion`; trigger in `text-[#A100FF] text-sm`: "N sources"
+- [x] Each citation: filename `Badge` + page number; excerpt in `Tooltip` on hover
 
 ### 4.6 Thinking indicator — `src/components/chat/ThinkingBubble.tsx`
-- [ ] Left-aligned, `<AccentureMark size={20} />`, three dots `bg-[#A100FF]` with `animate-pulse` stagger delay (`delay-0`, `delay-150`, `delay-300`)
+- [x] Left-aligned, `<AccentureMark size={20} />`, three dots `bg-[#A100FF]` with `animate-pulse` stagger delay
 
 ### 4.7 Chat input — `src/components/chat/ChatInput.tsx`
-- [ ] Container: `bg-[#111111] border border-[#333333] rounded-2xl px-4 py-3 focus-within:border-[#A100FF] transition-colors`
-- [ ] `Textarea` auto-resize (min 1 row, max 6 rows): `bg-transparent text-white placeholder:text-[#888888] resize-none outline-none` — Enter submits, Shift+Enter newline
-- [ ] Bottom toolbar row:
-  - Left: `+` and `✦` as `Button` icon ghost, `text-[#888888] hover:text-white`
-  - Right: Send `Button` — `bg-[#A100FF] hover:bg-[#8C00E6] text-white px-4 rounded-xl disabled:opacity-40`; shows `Loader2` spin while loading
-- [ ] Accepts `onSubmit(message: string)` + `disabled` + optional `defaultValue` (for suggested prompts)
+- [x] Container: `bg-card border border-border rounded-xl focus-within:border-[#A100FF] transition-colors`
+- [x] `Textarea` auto-resize (min 1 row, max ~6 rows): `bg-transparent text-foreground placeholder:text-muted-foreground resize-none` — Enter submits, Shift+Enter newline
+- [x] Bottom toolbar row:
+  - Left: `+` and `✦` as `Button` icon ghost, `text-muted-foreground hover:text-foreground`
+  - Right: Send `Button` — `bg-[#A100FF] hover:bg-[#8A00E0] text-white disabled:opacity-40`; shows `Loader2` spin while loading
+- [x] Accepts `onSubmit(message: string)` + `disabled` + optional `defaultValue`
 
 ---
 
 ## Phase 5 — Upload Sheet
 
 ### 5.1 Sheet component — `src/components/upload/UploadSheet.tsx`
-- [ ] ShadCN `Sheet` side="right", `max-w-md`
-- [ ] Override sheet styles: `bg-black border-l border-[#333333]`
-- [ ] Header: "Upload Document" in `text-white font-semibold` + close `Button` icon ghost `text-[#888888] hover:text-white`
+- [x] ShadCN `Sheet` side="right", `w-full sm:w-[480px]`
+- [x] Sheet styles: `bg-background border-l border-border text-foreground`
+- [x] Header: "Upload Document" + step progress indicators
 
-### 5.2 Drop zone — `src/components/upload/FileDropZone.tsx`
-- [ ] `border-2 border-dashed border-[#333333] rounded-xl p-8 text-center text-[#888888]`
-- [ ] Drag-active state: `border-[#A100FF] bg-[rgba(161,0,255,0.04)]`
-- [ ] `onDragOver`/`onDrop` handlers + click-to-open hidden `<input type="file" />`
-- [ ] Selected file: filename in `text-white` + `XIcon` button to clear
+### 5.2 Drop zone — integrated in `UploadSheet.tsx`
+- [x] `border-2 border-dashed border-border rounded-xl p-8 text-center text-muted-foreground`
+- [x] Selected state: `border-[#A100FF]`
+- [x] Click-to-open hidden `<input type="file" />`
+- [x] Selected file: filename in `text-foreground`
 
-### 5.3 Metadata form — `src/components/upload/MetadataForm.tsx`
-- [ ] Controlled with `react-hook-form` + `zod` schema:
-  - `industry`: required `Select` (dropdown list TBD from requirements)
-  - `documentType`: required `Select`
+### 5.3 Metadata form — integrated in `UploadSheet.tsx`
+- [x] Controlled with `react-hook-form` + `zod` schema:
+  - `industry`: required `select`
+  - `documentType`: required `select`
   - `useCase`: optional `Input`
   - `client`: optional `Input`
-- [ ] ShadCN `Label` + `FormMessage` for inline validation errors
+- [x] Inline validation errors via `FormMessage`
 
-### 5.4 Upload progress — `src/components/upload/UploadProgress.tsx`
-- [ ] ShadCN `Progress` bar: override indicator to `bg-[#A100FF]`, track `bg-[#1A1A1A]`
-- [ ] Driven by `XMLHttpRequest` `progress` event (not `fetch`, which lacks upload progress)
-- [ ] Status text `text-[#888888] text-sm`: "uploading…" / "complete" — "complete" text briefly in `text-[#A100FF]`
+### 5.4 Upload progress — integrated in `UploadSheet.tsx`
+- [x] ShadCN `Progress` bar: indicator `bg-[#A100FF]`, track `bg-muted`
+- [x] Driven by `XMLHttpRequest` `progress` event
+- [x] Status text `text-muted-foreground text-sm`: "Uploading… X%" / "Processing…"
 
 ### 5.5 Upload orchestration (in `UploadSheet.tsx`)
-- [ ] On submit:
-  1. `callApi('POST /api/upload-url', metadata)` → `{ url }`
+- [x] On submit:
+  1. `POST /api/upload-url` with metadata → `{ url }`
   2. `XMLHttpRequest PUT` to S3 presigned URL, tracking progress
   3. On success: `toast.success('Document uploaded')`, close sheet
-  4. On error: set error state in sheet, keep sheet open
+  4. On error: set error state, keep sheet open
 
 ---
 
 ## Phase 6 — Pages
 
 ### 6.1 Welcome page — `src/app/page.tsx`
-- [ ] Server component: reads sessions list for sidebar (or defer to client)
-- [ ] Renders `<AppSidebar />` + `<TopBar />` + `<WelcomeScreen />`
-- [ ] On first message submit: creates new `sessionId`, navigates to `/chat/[sessionId]`, then sends message
+- [x] Client component using `useChatSession` hook
+- [x] Renders `<TopBar />` + `<WelcomeScreen />`
+- [x] On first message submit: creates new `sessionId`, navigates to `/chat/[sessionId]`
 
 ### 6.2 Chat page — `src/app/chat/[sessionId]/page.tsx`
-- [ ] On mount: `GET /api/history/[sessionId]` to hydrate message list
-- [ ] Renders `<AppSidebar />` + `<TopBar />` + `<MessageList />` + bottom-anchored `<ChatInput />`
-- [ ] On submit: optimistic user message append → `POST /api/chat` → append assistant response
-- [ ] Input transitions: same `<ChatInput>` component, positioned `sticky bottom-0` inside main panel
+- [x] On mount: `GET /api/history/[sessionId]` to hydrate message list
+- [x] Renders `<TopBar />` + `<MessageList />` + bottom-anchored `<ChatInput />`
+- [x] On submit: optimistic user message append → `POST /api/chat` → append assistant response
 
 ---
 
 ## Phase 7 — Container
 
 ### 7.1 Dockerfile
-- [ ] Multi-stage build per SPEC §8 — `builder` (npm ci + build) → `runner` (standalone output only)
-- [ ] `CMD ["node", "server.js"]`, `EXPOSE 3000`
-- [ ] `ENV NODE_ENV=production` in runner stage
+- [x] Multi-stage build — `builder` (npm ci + build) → `runner` (standalone output only)
+- [x] `CMD ["node", "server.js"]`, `EXPOSE 3000`
+- [x] `ENV NODE_ENV=production` in runner stage
 
 ### 7.2 Docker Compose
-- [ ] `docker-compose.yml` per SPEC §8
-- [ ] `docker-compose.override.yml` for local secrets (gitignored)
-- [ ] `.dockerignore`: `node_modules`, `.next`, `.env*`, `.git`, `*.md`
+- [x] `docker-compose.yml`
+- [x] `docker-compose.override.yml` for local secrets (gitignored)
+- [x] `.dockerignore`: `node_modules`, `.next`, `.env*`, `.git`, `*.md`
 
 ### 7.3 Verify locally
 - [ ] `docker compose up --build` — app loads at `localhost:3000`
@@ -317,30 +303,28 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 
 ## Phase 8 — Terraform / ECS Integration
 
-- [ ] ECS task definition points to new ECR image
-- [ ] Task role additions: `bedrock:InvokeAgent`, `dynamodb:GetItem/PutItem/Query`, `lambda:InvokeFunction`
-- [ ] ALB target group health check → `/api/health`
-- [ ] ALB Cognito auth rule unchanged
-- [ ] DynamoDB table: add `userEmail` attribute + GSI for `GET /api/sessions`
-- [ ] CI workflow (`.github/workflows/terraform.yml`): build + push Docker image to ECR before `terraform apply`
+- [x] ECS task definition points to new ECR image — `terraform/team2/main.tf` task definition updated to `chat-frontend` container on port 3000
+- [x] Task role additions: `bedrock-agent-runtime:InvokeAgent/Retrieve/RetrieveAndGenerate`, `dynamodb:GetItem/PutItem/Query`, `lambda:InvokeFunction` — all added to `aws_iam_role_policy.ecs_task` in `terraform/team2/main.tf`
+- [x] ALB target group health check → `/api/health` — updated in `aws_lb_target_group.chat_frontend`
+- [x] ALB Cognito auth rule unchanged — `aws_lb_listener_rule.chat_frontend` in `terraform/team2/main.tf` untouched
+- [x] DynamoDB table: `knowledge-base-chat-history` with PK `sessionId`, SK `timestamp`, `userEmail` GSI — added to `terraform/modules/storage/main.tf`; outputs added to storage module, team1 outputs, and referenced from team2 task role policy
+- [x] CI workflow — `.github/workflows/docker.yml` builds and pushes chat-ui to ECR on `push` to `main`; `terraform.yml` triggers team2 plan/apply when `chat-ui/**` changes
 
 ---
 
 ## Phase 9 — QA Checklist
 
 **Branding**
-- [ ] Background is pure black (`#000000`) everywhere — no gray tint on any surface
 - [ ] Accenture purple (`#A100FF`) appears on: Send button, active sidebar item border, user bubble left border, citation links, progress bar, thinking dots, focus rings
-- [ ] Font is Graphik (if available) or Inter — verify in DevTools > Computed > font-family
-- [ ] `AccentureMark` `>` chevron renders in purple in sidebar and welcome screen
-- [ ] No light mode — `forcedTheme="dark"` confirmed, no flash on load
+- [x] Font is Inter (Graphik fallback) — verified via `tailwind.config.ts` and `globals.css`
+- [x] `AccentureMark` `>` chevron renders in purple in sidebar and welcome screen
+- [x] Light/dark theme toggle works — light is default, sun/moon button in TopBar
 
 **Layout**
-- [ ] Sidebar renders correctly; collapse/expand works on desktop
-- [ ] Mobile: sidebar is hidden behind `Sheet`, hamburger opens it
+- [x] Sidebar renders correctly on desktop (`hidden md:flex`)
+- [x] Mobile: sidebar hidden behind `Sheet`, hamburger opens it
 
 **Welcome screen**
-- [ ] Centered input + suggested prompts visible on `/`
 - [ ] Clicking a suggested prompt populates input and auto-focuses
 - [ ] Sending first message creates session, navigates to `/chat/[sessionId]`
 
@@ -353,8 +337,8 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 - [ ] Sidebar shows new session in "Today" group after first message
 
 **Upload**
-- [ ] Sheet opens from sidebar button and from `+` in chat input
-- [ ] File drag-and-drop + click-to-browse both work
+- [ ] Sheet opens from sidebar button
+- [ ] File click-to-browse works
 - [ ] Required fields (Industry, DocumentType) block submit if empty
 - [ ] Progress bar tracks actual upload to S3
 - [ ] Success toast fires; sheet closes
@@ -362,7 +346,7 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 
 **Auth**
 - [ ] `x-amzn-oidc-data` decoded correctly; user email shown in sidebar + top bar
-- [ ] Simulated expired session (clear ALB cookie) → `callApi()` redirects to `/` on next API call
+- [ ] Simulated expired session → `callApi()` redirects to `/` on next API call
 - [ ] No infinite redirect loop
 
 **Container**

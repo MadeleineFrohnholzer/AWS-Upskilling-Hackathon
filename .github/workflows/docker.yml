@@ -1,0 +1,59 @@
+name: Docker Build & Push
+
+on:
+  push:
+    branches: [main]
+    paths: ['chat-ui/**']
+  pull_request:
+    branches: [main]
+    paths: ['chat-ui/**']
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: eu-central-1
+
+jobs:
+  build:
+    name: Build & Push chat-ui
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve ECR repository URI
+        id: ecr
+        run: |
+          REPO_URI=$(aws ecr describe-repositories \
+            --repository-names "knowledge-base-chat-frontend" \
+            --query "repositories[0].repositoryUri" \
+            --output text 2>/dev/null || echo "")
+          echo "repo_uri=$REPO_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image
+        working-directory: chat-ui
+        run: |
+          docker build -t chat-ui:${{ github.sha }} .
+
+      - name: Push to ECR
+        if: github.event_name == 'push' && steps.ecr.outputs.repo_uri != ''
+        working-directory: chat-ui
+        run: |
+          IMAGE_URI="${{ steps.ecr.outputs.repo_uri }}:${{ github.sha }}"
+          LATEST_URI="${{ steps.ecr.outputs.repo_uri }}:latest"
+          docker tag chat-ui:${{ github.sha }} "$IMAGE_URI"
+          docker tag chat-ui:${{ github.sha }} "$LATEST_URI"
+          docker push "$IMAGE_URI"
+          docker push "$LATEST_URI"
+          echo "Pushed: $IMAGE_URI"
