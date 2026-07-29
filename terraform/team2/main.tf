@@ -104,6 +104,7 @@ module "compute" {
   environment            = var.environment
   vpc_id                 = local.vpc_id
   private_subnet_ids     = local.private_subnet_ids
+  alb_arn                = local.alb_arn
   container_image        = var.open_webui_image
   proxy_image            = var.proxy_image
   bedrock_agent_id       = module.bedrock_agent.agent_id

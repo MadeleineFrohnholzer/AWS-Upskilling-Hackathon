@@ -167,11 +167,6 @@ resource "aws_cloudwatch_log_group" "chat_frontend" {
   retention_in_days = 14
 }
 
-resource "aws_cloudwatch_log_group" "open_webui" {
-  name              = "/ecs/${var.project_name}-open-webui"
-  retention_in_days = 14
-}
-
 # -----------------------------------------------------------------------------
 # CloudWatch Metric Alarms
 # -----------------------------------------------------------------------------
@@ -200,7 +195,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx_rate" {
       metric_name = "RequestCount"
       period      = 300
       stat        = "Sum"
-      dimensions  = { LoadBalancer = aws_lb.internal.arn_suffix }
+      dimensions  = { LoadBalancer = data.aws_lb.shared.arn_suffix }
     }
   }
 
@@ -211,7 +206,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx_rate" {
       metric_name = "HTTPCode_Target_5XX_Count"
       period      = 300
       stat        = "Sum"
-      dimensions  = { LoadBalancer = aws_lb.internal.arn_suffix }
+      dimensions  = { LoadBalancer = data.aws_lb.shared.arn_suffix }
     }
   }
 }
@@ -231,7 +226,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_latency_p95" {
   alarm_actions       = var.alarm_actions
 
   dimensions = {
-    LoadBalancer = aws_lb.internal.arn_suffix
+    LoadBalancer = data.aws_lb.shared.arn_suffix
   }
 }
 
@@ -306,7 +301,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           view   = "timeSeries"
           region = data.aws_region.current.name
           metrics = [
-            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.internal.arn_suffix, { stat = "Sum", period = 60 }]
+            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", data.aws_lb.shared.arn_suffix, { stat = "Sum", period = 60 }]
           ]
         }
       },
@@ -321,7 +316,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           view   = "timeSeries"
           region = data.aws_region.current.name
           metrics = [
-            ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", aws_lb.internal.arn_suffix, { stat = "Sum", period = 60, color = "#d62728" }]
+            ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", data.aws_lb.shared.arn_suffix, { stat = "Sum", period = 60, color = "#d62728" }]
           ]
         }
       },
@@ -336,7 +331,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           view   = "timeSeries"
           region = data.aws_region.current.name
           metrics = [
-            ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", aws_lb.internal.arn_suffix, { extendedStatistic = "p95", period = 60, label = "p95" }]
+            ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", data.aws_lb.shared.arn_suffix, { extendedStatistic = "p95", period = 60, label = "p95" }]
           ]
         }
       },
@@ -360,77 +355,10 @@ resource "aws_cloudwatch_dashboard" "main" {
 }
 
 # -----------------------------------------------------------------------------
-# Security Group for ECS Tasks
-# -----------------------------------------------------------------------------
-resource "aws_security_group" "ecs_tasks" {
-  name_prefix = "${var.project_name}-ecs-tasks-"
-  vpc_id      = var.vpc_id
-  description = "Security group for ECS Fargate tasks"
-
-  ingress {
-    from_port       = var.container_port
-    to_port         = var.container_port
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-    description     = "Allow traffic from ALB"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
-  }
-
-  tags = {
-    Name = "${var.project_name}-ecs-tasks-sg"
-  }
-}
-
-# -----------------------------------------------------------------------------
-# Internal ALB
-# -----------------------------------------------------------------------------
-resource "aws_security_group" "alb" {
-  name_prefix = "${var.project_name}-alb-"
-  vpc_id      = var.vpc_id
-  description = "Security group for internal ALB"
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/8"] # Corporate VPN CIDR — adjust as needed
-    description = "HTTPS from VPN"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
-  }
-
-  tags = {
-    Name = "${var.project_name}-alb-sg"
-  }
-}
-
-resource "aws_lb" "internal" {
-  name               = "${var.project_name}-internal-alb"
-  internal           = true
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = var.private_subnet_ids
-
-  tags = {
-    Name        = "${var.project_name}-internal-alb"
-    Environment = var.environment
-  }
-}
-
-# -----------------------------------------------------------------------------
 # Data Sources
 # -----------------------------------------------------------------------------
 data "aws_region" "current" {}
+
+data "aws_lb" "shared" {
+  arn = var.alb_arn
+}

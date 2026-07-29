@@ -20,6 +20,11 @@ variable "private_subnet_ids" {
   type        = list(string)
 }
 
+variable "alb_arn" {
+  description = "ARN of the shared internal ALB (from networking module). Used for CloudWatch alarms and dashboard."
+  type        = string
+}
+
 variable "container_image" {
   description = "Docker image URI for the chat frontend"
   type        = string
