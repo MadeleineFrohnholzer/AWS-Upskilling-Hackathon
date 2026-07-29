@@ -197,5 +197,4 @@ jobs:
           TF_VAR_entra_tenant_id: ${{ secrets.TF_VAR_ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id: ${{ secrets.TF_VAR_ENTRA_CLIENT_ID }}
           TF_VAR_entra_client_secret: ${{ secrets.TF_VAR_ENTRA_CLIENT_SECRET }}
-          
           TF_VAR_cognito_callback_urls: ${{ secrets.TF_VAR_COGNITO_CALLBACK_URL }}
