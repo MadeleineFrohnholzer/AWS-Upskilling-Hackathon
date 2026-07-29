@@ -37,6 +37,18 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [step, setStep] = useState(1);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const acceptFile = (f: File) => { setFile(f); setStep(2); };
+
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) acceptFile(f);
+  };
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -117,14 +129,17 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
               <label
                 htmlFor="file-input"
                 className={`block border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                  file ? 'border-[#A100FF]' : 'border-border hover:border-[#A100FF]'
+                  file || isDragging ? 'border-[#A100FF] bg-[rgba(161,0,255,0.04)]' : 'border-border hover:border-[#A100FF]'
                 }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
               >
                 {file ? (
                   <span className="text-foreground text-sm">{file.name}</span>
                 ) : (
                   <span className="text-muted-foreground text-sm">
-                    Drag &amp; drop or click to select a file
+                    {isDragging ? 'Drop to upload' : 'Drag & drop or click to select a file'}
                     <br />
                     <span className="text-xs">.pdf, .docx, .txt, .pptx</span>
                   </span>
@@ -136,7 +151,7 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) { setFile(f); setStep(2); }
+                    if (f) acceptFile(f);
                   }}
                 />
               </label>

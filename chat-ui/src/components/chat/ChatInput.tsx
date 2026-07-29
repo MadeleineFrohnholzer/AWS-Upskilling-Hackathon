@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, KeyboardEvent } from 'react';
+import { useRef, useState, useEffect, KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowUp, Loader2, Plus, Sparkles } from 'lucide-react';
@@ -11,11 +11,28 @@ interface ChatInputProps {
   isLoading?: boolean;
   className?: string;
   defaultValue?: string;
+  value?: string;
+  onChange?: (value: string) => void;
 }
 
-export function ChatInput({ onSubmit, isLoading, className, defaultValue }: ChatInputProps) {
-  const [value, setValue] = useState(defaultValue ?? '');
+export function ChatInput({ onSubmit, isLoading, className, defaultValue, value: externalValue, onChange: externalOnChange }: ChatInputProps) {
+  const isControlled = externalValue !== undefined;
+  const [internalValue, setInternalValue] = useState(defaultValue ?? '');
+  const value = isControlled ? externalValue! : internalValue;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const setValue = (v: string) => {
+    if (!isControlled) setInternalValue(v);
+    externalOnChange?.(v);
+  };
+
+  useEffect(() => {
+    if (isControlled && externalValue && textareaRef.current) {
+      textareaRef.current.focus();
+      const len = externalValue.length;
+      textareaRef.current.setSelectionRange(len, len);
+    }
+  }, [isControlled, externalValue]);
 
   const handleSubmit = () => {
     const trimmed = value.trim();

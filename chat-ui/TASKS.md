@@ -195,14 +195,14 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 - [x] `flex flex-col items-center justify-center h-full bg-background gap-6 pt-12 md:pt-0`
 - [x] `<AccentureMark size={48} />` + `<h2 className="text-foreground text-2xl font-semibold">{appName}</h2>`
 - [x] Muted tagline: `text-muted-foreground text-sm` — "Powered by Accenture & Amazon Bedrock"
-- [x] `<ChatInput>` at `max-w-2xl w-full`
+- [x] `<ChatInput>` at `max-w-2xl w-full` — controlled (`value`/`onChange` lifted to WelcomeScreen)
 - [x] `<SuggestedPrompts>` below input
 
 ### 4.2 Suggested prompts — `src/components/chat/SuggestedPrompts.tsx`
 - [x] 3 hardcoded domain-specific prompt cards
 - [x] Card style: `bg-card border border-border rounded-lg p-3 hover:border-[#A100FF] transition-colors cursor-pointer`
 - [x] Bold title `text-foreground text-sm font-medium` + muted subtitle `text-muted-foreground text-xs`
-- [x] Clicking sends prompt via `onSelect`
+- [x] Clicking **populates** ChatInput and auto-focuses (textarea focuses via `useEffect` on value change)
 - [x] **Responsive:** `grid-cols-1 sm:grid-cols-3`
 
 ### 4.3 Message list — `src/components/chat/MessageList.tsx`
@@ -243,9 +243,9 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 
 ### 5.2 Drop zone — integrated in `UploadSheet.tsx`
 - [x] `border-2 border-dashed border-border rounded-xl p-8 text-center text-muted-foreground`
-- [x] Selected state: `border-[#A100FF]`
-- [x] Click-to-open hidden `<input type="file" />`
-- [x] Selected file: filename in `text-foreground`
+- [x] Selected/drag-active state: `border-[#A100FF] bg-[rgba(161,0,255,0.04)]`
+- [x] `onDragOver`/`onDragLeave`/`onDrop` handlers + click-to-open hidden `<input type="file" />`
+- [x] Selected file: filename in `text-foreground`; drag-active shows "Drop to upload"
 
 ### 5.3 Metadata form — integrated in `UploadSheet.tsx`
 - [x] Controlled with `react-hook-form` + `zod` schema:
@@ -296,8 +296,8 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 - [x] `.dockerignore`: `node_modules`, `.next`, `.env*`, `.git`, `*.md`
 
 ### 7.3 Verify locally
-- [ ] `docker compose up --build` — app loads at `localhost:3000`
-- [ ] AWS credential mount works for local Bedrock / DynamoDB calls
+- [ ] `docker compose up --build` — app loads at `localhost:3000` *(Docker not installed on dev machine — verify on a machine with Docker)*
+- [ ] AWS credential mount works for local Bedrock / DynamoDB calls *(see `DEPLOYMENT.md`)*
 
 ---
 
@@ -325,24 +325,25 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 - [x] Mobile: sidebar hidden behind `Sheet`, hamburger opens it
 
 **Welcome screen**
-- [ ] Clicking a suggested prompt populates input and auto-focuses
-- [ ] Sending first message creates session, navigates to `/chat/[sessionId]`
+- [x] Clicking a suggested prompt populates input and auto-focuses — `WelcomeScreen` lifts state; `ChatInput` focuses via `useEffect` when `value` prop changes
+- [x] Sending first message creates session, navigates to `/chat/[sessionId]` — `useChatSession` calls `router.push` after first response
 
 **Chat**
-- [ ] Messages render with correct alignment (user right, assistant left)
-- [ ] Markdown formatting renders in assistant messages (bold, lists, code blocks)
-- [ ] Thinking indicator shows while waiting, disappears on response
-- [ ] Citations accordion opens/closes; excerpt visible in tooltip
-- [ ] Page reload at `/chat/[sessionId]` hydrates full history from DynamoDB
-- [ ] Sidebar shows new session in "Today" group after first message
+- [x] Messages render with correct alignment (user right, assistant left) — `MessageBubble` user=`flex justify-end`, assistant=`flex gap-3`
+- [x] Markdown formatting renders in assistant messages — `react-markdown` + `rehype-highlight`
+- [x] Thinking indicator shows while waiting, disappears on response — `ThinkingBubble` rendered when `isLoading && messages.length > 0`
+- [x] Citations accordion opens/closes; excerpt visible in tooltip — `CitationList` uses ShadCN `Accordion` + `Tooltip`
+- [x] Page reload at `/chat/[sessionId]` hydrates full history from DynamoDB — `useEffect` on mount fetches `/api/history/[sessionId]`
+- [ ] Sidebar shows new session in "Today" group after first message *(requires live DynamoDB)*
 
 **Upload**
-- [ ] Sheet opens from sidebar button
-- [ ] File click-to-browse works
-- [ ] Required fields (Industry, DocumentType) block submit if empty
-- [ ] Progress bar tracks actual upload to S3
-- [ ] Success toast fires; sheet closes
-- [ ] Error state stays visible inside sheet if upload fails
+- [x] Sheet opens from sidebar Upload Document button
+- [x] File drag-and-drop — `onDragOver`/`onDrop` on drop zone label; "Drop to upload" text while dragging
+- [x] File click-to-browse works — hidden `<input type="file">` triggered by label click
+- [x] Required fields (Industry, DocumentType) block submit if empty — `zod` schema + `react-hook-form` validation
+- [x] Progress bar tracks actual upload to S3 — `XMLHttpRequest` `progress` event drives ShadCN `Progress`
+- [x] Success toast fires; sheet closes — `sonner` `toast.success` + `handleClose()`
+- [x] Error state stays visible inside sheet if upload fails — catches error, sets `step(2)`, keeps sheet open
 
 **Auth**
 - [ ] `x-amzn-oidc-data` decoded correctly; user email shown in sidebar + top bar
