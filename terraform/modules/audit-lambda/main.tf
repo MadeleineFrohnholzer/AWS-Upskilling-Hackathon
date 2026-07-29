@@ -1,18 +1,14 @@
 # =============================================================================
-# Audit Lambda — writes document audit records to DynamoDB on processed bucket
+# Audit Lambda — writes to document-audit-trail on processed bucket events
 # =============================================================================
 # Triggered by S3 ObjectCreated on the processed bucket.
 # .metadata.json events → upsert with all metadata fields.
-# All other events → upsert with filename + timestamps only.
-
-locals {
-  function_name = "${var.project_name}-document-audit-trail-${var.environment}"
-}
+# All other events     → upsert with filename + timestamps only.
 
 # ── IAM ──────────────────────────────────────────────────────────────────────
 
 resource "aws_iam_role" "audit" {
-  name = "platform-${local.function_name}"
+  name = "platform-document-audit-trail"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -68,7 +64,7 @@ data "archive_file" "lambda" {
 # ── Lambda function ───────────────────────────────────────────────────────────
 
 resource "aws_lambda_function" "audit" {
-  function_name    = local.function_name
+  function_name    = "document-audit-trail"
   role             = aws_iam_role.audit.arn
   handler          = "handler.handler"
   runtime          = "python3.12"

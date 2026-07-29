@@ -5,7 +5,7 @@
 # to the landing bucket, and returns a presigned S3 PUT URL.
 
 locals {
-  function_name  = "${var.project_name}-presigned-url-${var.environment}"
+  function_name  = "document-upload-handler"
   expiry_seconds = var.presigned_url_expiry_minutes * 60
 }
 
