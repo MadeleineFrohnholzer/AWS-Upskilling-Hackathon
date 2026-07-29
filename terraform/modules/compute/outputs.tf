@@ -13,20 +13,6 @@ output "ecr_repository_url" {
   value       = aws_ecr_repository.chat_frontend.repository_url
 }
 
-output "alb_dns_name" {
-  description = "DNS name of the internal ALB"
-  value       = aws_lb.internal.dns_name
-}
-
-output "alb_arn" {
-  description = "ARN of the internal ALB"
-  value       = aws_lb.internal.arn
-}
-
-output "ecs_tasks_security_group_id" {
-  description = "Security group ID for ECS tasks"
-  value       = aws_security_group.ecs_tasks.id
-}
 
 output "ecs_task_role_arn" {
   description = "IAM task role ARN — the running containers assume this to call Bedrock"
