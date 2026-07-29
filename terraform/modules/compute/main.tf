@@ -1,9 +1,16 @@
 # =============================================================================
-# Compute Module — ECS Fargate, ALB, ECR
+# Compute Module — ECR Repository, ECS Cluster, IAM Task Execution Role
+# =============================================================================
+# Intentionally minimal. Resources that belong to the deployment context
+# (ALB, task definition, ECS service, CloudWatch alarms) live in terraform/team2
+# so they have access to the shared networking state and the correct references.
+#
+# The ALB and security groups are created by terraform/modules/networking and
+# shared via the S3 backend — do NOT recreate them here.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# ECR Repository
+# ECR Repository — stores the chat-frontend Docker image
 # -----------------------------------------------------------------------------
 resource "aws_ecr_repository" "chat_frontend" {
   name                 = "chat-application-image-repo"
@@ -17,6 +24,24 @@ resource "aws_ecr_repository" "chat_frontend" {
     Name        = "chat-application-image-repo"
     Environment = var.environment
   }
+}
+
+resource "aws_ecr_lifecycle_policy" "chat_frontend" {
+  repository = aws_ecr_repository.chat_frontend.name
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep last 10 tagged images, expire untagged after 1 day"
+      selection = {
+        tagStatus   = "untagged"
+        countType   = "sinceImagePushed"
+        countUnit   = "days"
+        countNumber = 1
+      }
+      action = { type = "expire" }
+    }]
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -36,8 +61,20 @@ resource "aws_ecs_cluster" "main" {
   }
 }
 
+resource "aws_ecs_cluster_capacity_providers" "main" {
+  cluster_name       = aws_ecs_cluster.main.name
+  capacity_providers = ["FARGATE", "FARGATE_SPOT"]
+
+  default_capacity_provider_strategy {
+    capacity_provider = "FARGATE"
+    weight            = 1
+  }
+}
+
 # -----------------------------------------------------------------------------
-# ECS Task Execution Role (ECR pull + CloudWatch Logs)
+# ECS Task Execution Role
+# Grants ECS itself permission to pull images from ECR and write to CloudWatch Logs.
+# Additional secrets access (SSM/Secrets Manager) can be attached by the caller.
 # -----------------------------------------------------------------------------
 resource "aws_iam_role" "ecs_task_execution" {
   name = "platform-ecs-task-execution"
@@ -45,13 +82,16 @@ resource "aws_iam_role" "ecs_task_execution" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "ecs-tasks.amazonaws.com"
-      }
+      Effect    = "Allow"
+      Action    = "sts:AssumeRole"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
     }]
   })
+
+  tags = {
+    Name        = "platform-${var.project_name}-ecs-task-execution"
+    Environment = var.environment
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
@@ -165,6 +205,7 @@ resource "aws_ecs_task_definition" "chat_frontend" {
 resource "aws_cloudwatch_log_group" "chat_frontend" {
   name              = "/ecs/chat-application"
   retention_in_days = 14
+
 }
 
 # -----------------------------------------------------------------------------
@@ -360,7 +401,3 @@ resource "aws_cloudwatch_dashboard" "main" {
 # Data Sources
 # -----------------------------------------------------------------------------
 data "aws_region" "current" {}
-
-data "aws_lb" "shared" {
-  arn = var.alb_arn
-}

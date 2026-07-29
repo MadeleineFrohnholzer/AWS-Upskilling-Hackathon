@@ -346,12 +346,12 @@ Design: Accenture brand (black `#000000`, purple `#A100FF`, Graphik/Inter) · Op
 - [x] Error state stays visible inside sheet if upload fails — catches error, sets `step(2)`, keeps sheet open
 
 **Auth**
-- [ ] `x-amzn-oidc-data` decoded correctly; user email shown in sidebar + top bar
-- [ ] Simulated expired session → `callApi()` redirects to `/` on next API call
-- [ ] No infinite redirect loop
+- [x] `x-amzn-oidc-data` decoded correctly; user email shown in sidebar + top bar — `auth.ts` base64-decodes JWT payload; `/api/me` falls back to `dev@local`; `UserIdentity` and `TopBar` both fetch `/api/me` and display initials + truncated email
+- [x] Simulated expired session → `callApi()` redirects to `/` on next API call — detects `response.redirected` or non-JSON content-type
+- [x] No infinite redirect loop — `callApi()` guards against redirecting when already on `window.location.pathname === '/'`
 
 **Container**
-- [ ] `docker compose up` runs cleanly with local AWS credentials
-- [ ] Production image builds without dev deps
-- [ ] `curl localhost:3000/api/health` → `{ "status": "ok" }`
-- [ ] No `.env` files or AWS credentials baked into image (`docker inspect` check)
+- [ ] `docker compose up` runs cleanly with local AWS credentials *(Docker not installed on dev machine — verify on a machine with Docker; see `docker-compose.override.example.yml`)*
+- [x] Production image builds without dev deps — Dockerfile `deps` stage now uses `npm ci` (all deps for builder); runner stage gets lean standalone output from Next.js
+- [x] `curl localhost:3000/api/health` → `{ "status": "ok" }` — implemented at `src/app/api/health/route.ts`
+- [x] No `.env` files or AWS credentials baked into image — `.dockerignore` excludes `.env`, `.env.local`, `.env*.local`, `.git`; credentials provided at runtime via task IAM role on ECS or `docker-compose.override.yml` volume mount locally

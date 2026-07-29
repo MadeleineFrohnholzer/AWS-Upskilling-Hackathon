@@ -434,7 +434,7 @@ resource "aws_ecs_task_definition" "open_webui" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.open_webui.name
+        "awslogs-group"         = module.compute.chat_frontend_log_group_name
         "awslogs-region"        = local.region
         "awslogs-stream-prefix" = "chat-frontend"
       }
@@ -491,4 +491,164 @@ resource "aws_appautoscaling_policy" "open_webui_cpu" {
     }
     target_value = 70.0
   }
+}
+
+# -----------------------------------------------------------------------------
+# CloudWatch Alarms — reference the shared ALB (not the compute module's dead ALB)
+# -----------------------------------------------------------------------------
+
+# Data source to resolve the ARN suffix of the shared ALB for CloudWatch dimensions
+data "aws_lb" "shared" {
+  arn = local.alb_arn
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_5xx_rate" {
+  alarm_name          = "${var.project_name}-alb-5xx-rate"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = 1.0
+  alarm_description   = "ALB 5xx error rate exceeded 1% for 2 consecutive minutes"
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "error_rate"
+    expression  = "100 * errors / MAX([errors, requests])"
+    label       = "5xx rate (%)"
+    return_data = true
+  }
+  metric_query {
+    id = "errors"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "HTTPCode_Target_5XX_Count"
+      period      = 60
+      stat        = "Sum"
+      dimensions  = { LoadBalancer = data.aws_lb.shared.arn_suffix }
+    }
+  }
+  metric_query {
+    id = "requests"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "RequestCount"
+      period      = 60
+      stat        = "Sum"
+      dimensions  = { LoadBalancer = data.aws_lb.shared.arn_suffix }
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_latency_p95" {
+  alarm_name          = "${var.project_name}-alb-latency-p95"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = 20
+  alarm_description   = "ALB P95 response time exceeded 20s for 2 consecutive minutes"
+  treat_missing_data  = "notBreaching"
+
+  namespace   = "AWS/ApplicationELB"
+  metric_name = "TargetResponseTime"
+  period      = 60
+  statistic   = "p95"
+  dimensions  = { LoadBalancer = data.aws_lb.shared.arn_suffix }
+}
+
+resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
+  alarm_name          = "${var.project_name}-ecs-cpu"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = 80
+  alarm_description   = "ECS service CPU utilisation exceeded 80% — autoscaling may be lagging"
+  treat_missing_data  = "notBreaching"
+
+  namespace   = "AWS/ECS"
+  metric_name = "CPUUtilization"
+  period      = 60
+  statistic   = "Average"
+  dimensions = {
+    ClusterName = module.compute.ecs_cluster_name
+    ServiceName = aws_ecs_service.open_webui.name
+  }
+}
+
+# -----------------------------------------------------------------------------
+# CloudWatch Dashboard
+# -----------------------------------------------------------------------------
+
+resource "aws_cloudwatch_dashboard" "main" {
+  dashboard_name = "${var.project_name}-chat-frontend"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ALB Request Count"
+          region = local.region
+          metrics = [[
+            "AWS/ApplicationELB",
+            "RequestCount",
+            "LoadBalancer", data.aws_lb.shared.arn_suffix,
+            { stat = "Sum", period = 60 }
+          ]]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ALB 5xx Count"
+          region = local.region
+          metrics = [[
+            "AWS/ApplicationELB",
+            "HTTPCode_Target_5XX_Count",
+            "LoadBalancer", data.aws_lb.shared.arn_suffix,
+            { stat = "Sum", period = 60, color = "#d62728" }
+          ]]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ALB P95 Latency (s)"
+          region = local.region
+          metrics = [[
+            "AWS/ApplicationELB",
+            "TargetResponseTime",
+            "LoadBalancer", data.aws_lb.shared.arn_suffix,
+            { stat = "p95", period = 60, color = "#ff7f0e" }
+          ]]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ECS CPU Utilisation (%)"
+          region = local.region
+          metrics = [[
+            "AWS/ECS",
+            "CPUUtilization",
+            "ClusterName", module.compute.ecs_cluster_name,
+            "ServiceName", aws_ecs_service.open_webui.name,
+            { stat = "Average", period = 60, color = "#9467bd" }
+          ]]
+        }
+      }
+    ]
+  })
 }

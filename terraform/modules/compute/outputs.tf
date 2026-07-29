@@ -8,34 +8,14 @@ output "ecs_cluster_arn" {
   value       = aws_ecs_cluster.main.arn
 }
 
+output "ecs_cluster_name" {
+  description = "Name of the ECS cluster"
+  value       = aws_ecs_cluster.main.name
+}
+
 output "ecr_repository_url" {
-  description = "URL of the ECR repository"
+  description = "URL of the ECR repository for the chat-frontend image"
   value       = aws_ecr_repository.chat_frontend.repository_url
-}
-
-
-output "ecs_task_role_arn" {
-  description = "IAM task role ARN — the running containers assume this to call Bedrock"
-  value       = aws_iam_role.ecs_task_role.arn
-}
-
-output "proxy_ecr_repository_url" {
-  description = "ECR URL for the bedrock-proxy image (empty string if module not wired)"
-  value       = ""
-}
-
-output "cloudwatch_dashboard_name" {
-  description = "CloudWatch dashboard name — open in console to view ECS + ALB metrics"
-  value       = aws_cloudwatch_dashboard.main.dashboard_name
-}
-
-output "alarm_arns" {
-  description = "ARNs of the three CloudWatch metric alarms"
-  value = {
-    alb_5xx_rate    = aws_cloudwatch_metric_alarm.alb_5xx_rate.arn
-    alb_latency_p95 = aws_cloudwatch_metric_alarm.alb_latency_p95.arn
-    ecs_cpu         = aws_cloudwatch_metric_alarm.ecs_cpu.arn
-  }
 }
 
 output "ecs_task_execution_role_arn" {
@@ -48,7 +28,7 @@ output "ecs_task_execution_role_name" {
   value       = aws_iam_role.ecs_task_execution.name
 }
 
-output "ecs_cluster_name" {
-  description = "Name of the ECS cluster"
-  value       = aws_ecs_cluster.main.name
+output "chat_frontend_log_group_name" {
+  description = "CloudWatch log group name for the chat-frontend container"
+  value       = aws_cloudwatch_log_group.chat_frontend.name
 }
