@@ -29,8 +29,8 @@ function SidebarContent({
 }) {
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Header */}
-      <div className="flex items-center gap-2 p-4 border-b border-border">
+      {/* Header — h-12 matches TopBar height so both sit on the same line */}
+      <div className="flex items-center gap-2 h-12 px-4 border-b border-border flex-shrink-0">
         <AccentureMark size={24} />
         <span className="text-foreground font-semibold text-sm tracking-tight">accenture</span>
       </div>

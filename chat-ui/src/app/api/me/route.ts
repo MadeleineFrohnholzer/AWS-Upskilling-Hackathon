@@ -4,6 +4,6 @@ import { getUserFromRequest } from '@/lib/auth';
 
 export async function GET() {
   const headersList = await headers();
-  const email = getUserFromRequest(headersList) ?? 'dev@local';
+  const email = getUserFromRequest(headersList) ?? process.env.DEV_USER_EMAIL ?? 'dev@local';
   return NextResponse.json({ email });
 }
