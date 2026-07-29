@@ -138,8 +138,11 @@ resource "aws_cognito_user_pool_domain" "main" {
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
-# Entra ID OIDC identity provider
+# Entra ID OIDC identity provider — only created when secrets are configured.
+# Set ENTRA_TENANT_ID, ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET in GitHub Actions secrets.
 resource "aws_cognito_identity_provider" "entra_id" {
+  count = var.entra_tenant_id != "" ? 1 : 0
+
   user_pool_id  = aws_cognito_user_pool.main.id
   provider_name = "EntraID"
   provider_type = "OIDC"
@@ -172,7 +175,7 @@ resource "aws_cognito_user_pool_client" "chat_app" {
   allowed_oauth_flows_user_pool_client = length(compact(var.cognito_callback_urls)) > 0
   allowed_oauth_flows                  = length(compact(var.cognito_callback_urls)) > 0 ? ["code"] : []
   allowed_oauth_scopes                 = length(compact(var.cognito_callback_urls)) > 0 ? ["openid", "email", "profile"] : []
-  supported_identity_providers         = ["EntraID"]
+  supported_identity_providers         = var.entra_tenant_id != "" ? ["EntraID"] : ["COGNITO"]
 
   callback_urls = compact(var.cognito_callback_urls)
   logout_urls   = compact(var.cognito_logout_urls)
