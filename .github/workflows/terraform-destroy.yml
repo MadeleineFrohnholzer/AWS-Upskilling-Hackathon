@@ -61,7 +61,7 @@ jobs:
         working-directory: terraform/team2
         run: |
           terraform init -input=false
-          terraform destroy -input=false -auto-approve
+          terraform destroy -input=false -auto-approve -refresh=false
         env:
           TF_VAR_entra_tenant_id: ${{ secrets.TF_VAR_ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id: ${{ secrets.TF_VAR_ENTRA_CLIENT_ID }}
@@ -89,7 +89,11 @@ jobs:
         working-directory: terraform/team1
         run: |
           terraform init -input=false
-          terraform destroy -input=false -auto-approve
+          terraform destroy -input=false -auto-approve || {
+            echo "First destroy attempt failed, removing stuck Bedrock resources from state and retrying..."
+            terraform state list | grep -E "aws_bedrockagent_data_source|aws_bedrockagent_knowledge_base" | xargs -r terraform state rm
+            terraform destroy -input=false -auto-approve
+          }
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Destroy shared last (team1 and team2 must be gone first)
