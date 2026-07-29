@@ -114,6 +114,23 @@ module "bedrock_kb" {
 }
 
 # -----------------------------------------------------------------------------
+# Audit Lambda (document-audit-trail)
+# -----------------------------------------------------------------------------
+module "audit_lambda" {
+  source = "../modules/audit-lambda"
+
+  processed_bucket_id  = module.storage.processed_bucket_id
+  processed_bucket_arn = module.storage.processed_bucket_arn
+  audit_table_name     = module.storage.upload_audit_table_name
+  audit_table_arn      = module.storage.upload_audit_table_arn
+  subnet_ids           = local.private_subnet_ids
+  security_group_id    = local.lambda_security_group_id
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+# -----------------------------------------------------------------------------
 # TODO: Add these resources during the hackathon
 # -----------------------------------------------------------------------------
 # - API Gateway: HTTP API for upload endpoint (POST /upload → presigned_url_lambda)

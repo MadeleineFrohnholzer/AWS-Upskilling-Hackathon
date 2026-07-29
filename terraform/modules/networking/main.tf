@@ -9,6 +9,11 @@ data "aws_prefix_list" "s3" {
   name = "com.amazonaws.${var.region}.s3"
 }
 
+# DynamoDB managed prefix list — used to allow Lambda egress to the DynamoDB Gateway endpoint
+data "aws_prefix_list" "dynamodb" {
+  name = "com.amazonaws.${var.region}.dynamodb"
+}
+
 # -----------------------------------------------------------------------------
 # VPC
 # -----------------------------------------------------------------------------
@@ -404,6 +409,14 @@ resource "aws_security_group" "lambda" {
     protocol        = "tcp"
     prefix_list_ids = [data.aws_prefix_list.s3.id]
     description     = "HTTPS to S3 via gateway endpoint"
+  }
+
+  egress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_prefix_list.dynamodb.id]
+    description     = "HTTPS to DynamoDB via gateway endpoint"
   }
 
   tags = {

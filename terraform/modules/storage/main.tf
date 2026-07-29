@@ -112,6 +112,25 @@ resource "aws_s3_bucket_cors_configuration" "landing" {
   }
 }
 
+# -----------------------------------------------------------------------------
+# DynamoDB: Document Audit Trail Table
+# -----------------------------------------------------------------------------
+resource "aws_dynamodb_table" "document_audit_trail" {
+  name         = "${var.project_name}-document-audit-trail"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "filename"
+
+  attribute {
+    name = "filename"
+    type = "S"
+  }
+
+  tags = {
+    Name        = "${var.project_name}-document-audit-trail"
+    Environment = var.environment
+  }
+}
+
 # DynamoDB: Feedback Logs Table
 # -----------------------------------------------------------------------------
 resource "aws_dynamodb_table" "feedback" {
