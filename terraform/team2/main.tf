@@ -304,7 +304,7 @@ resource "aws_lb_listener_rule" "chat_frontend" {
   count        = length(compact(var.cognito_callback_urls)) > 0 ? 1 : 0
   listener_arn = local.alb_listener_arn
   priority     = 100
-
+  /*
   action {
     type = "authenticate-cognito"
     authenticate_cognito {
@@ -316,7 +316,7 @@ resource "aws_lb_listener_rule" "chat_frontend" {
       session_timeout            = 28800
     }
   }
-
+*/
   action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.chat_frontend.arn
@@ -436,4 +436,5 @@ resource "aws_appautoscaling_policy" "open_webui_cpu" {
     }
     target_value = 70.0
   }
+
 }
