@@ -266,13 +266,6 @@ resource "aws_iam_role_policy" "ecs_task" {
   })
 }
 
-# Import the log group that was pre-created by the old compute module before it
-# was removed. Without this, Terraform tries to create it and hits ResourceAlreadyExists.
-import {
-  to = aws_cloudwatch_log_group.open_webui
-  id = "/ecs/${var.project_name}-open-webui"
-}
-
 # CloudWatch log group for Open WebUI
 resource "aws_cloudwatch_log_group" "open_webui" {
   name              = "/ecs/${var.project_name}-open-webui"
