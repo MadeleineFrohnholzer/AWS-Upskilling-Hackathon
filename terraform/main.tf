@@ -41,7 +41,7 @@ locals {
   ecs_tasks_security_group_id = module.networking.ecs_tasks_security_group_id
   account_id                  = data.aws_caller_identity.current.account_id
   region                      = data.aws_region.current.region
-#  container_image             = var.open_webui_image != "" ? var.open_webui_image : "${module.compute.ecr_repository_url}:latest"
+  #  container_image             = var.open_webui_image != "" ? var.open_webui_image : "${module.compute.ecr_repository_url}:latest"
 }
 
 # =============================================================================
