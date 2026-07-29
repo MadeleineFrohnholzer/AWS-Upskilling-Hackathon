@@ -47,7 +47,7 @@ export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
           <SheetTitle className="text-foreground">Settings</SheetTitle>
         </SheetHeader>
 
-        <div className="mt-6 space-y-6 flex-1 overflow-y-auto pr-1">
+        <div className="mt-6 space-y-6 flex-1 overflow-y-auto px-6">
 
           {/* Appearance */}
           <section>
