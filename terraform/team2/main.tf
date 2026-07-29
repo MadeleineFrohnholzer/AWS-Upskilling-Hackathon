@@ -175,7 +175,7 @@ resource "aws_cognito_user_pool_client" "chat_app" {
   allowed_oauth_flows_user_pool_client = length(compact(var.cognito_callback_urls)) > 0
   allowed_oauth_flows                  = length(compact(var.cognito_callback_urls)) > 0 ? ["code"] : []
   allowed_oauth_scopes                 = length(compact(var.cognito_callback_urls)) > 0 ? ["openid", "email", "profile"] : []
-  supported_identity_providers = var.entra_tenant_id != "" ? ["EntraID"] : ["COGNITO"]
+  supported_identity_providers         = var.entra_tenant_id != "" ? ["EntraID"] : ["COGNITO"]
 
   callback_urls = compact(var.cognito_callback_urls)
   logout_urls   = compact(var.cognito_logout_urls)
