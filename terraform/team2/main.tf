@@ -299,8 +299,9 @@ resource "aws_lb_target_group" "chat_frontend" {
   }
 }
 
-# authenticate-cognito must be the first action; forward must be second
+# Listener rule with Cognito auth — only when callback URLs are configured
 resource "aws_lb_listener_rule" "chat_frontend" {
+  count        = length(compact(var.cognito_callback_urls)) > 0 ? 1 : 0
   listener_arn = local.alb_listener_arn
   priority     = 100
 
@@ -315,6 +316,24 @@ resource "aws_lb_listener_rule" "chat_frontend" {
       session_timeout            = 28800
     }
   }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.chat_frontend.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
+}
+
+# Fallback forward rule (no auth) — used when Cognito callback URLs are not yet configured
+resource "aws_lb_listener_rule" "chat_frontend_noauth" {
+  count        = length(compact(var.cognito_callback_urls)) > 0 ? 0 : 1
+  listener_arn = local.alb_listener_arn
+  priority     = 100
 
   action {
     type             = "forward"
