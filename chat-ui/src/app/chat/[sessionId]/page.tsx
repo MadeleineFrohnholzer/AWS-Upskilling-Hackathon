@@ -37,12 +37,12 @@ export default function ChatPage({ params }: PageProps) {
   }, [sessionId, setMessages]);
 
   return (
-    <div className="flex flex-col h-screen bg-black">
+    <div className="flex flex-col h-screen bg-background">
       <TopBar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <MessageList messages={messages} isLoading={isLoading} />
       </div>
-      <div className="border-t border-[#333333] p-4 pb-6 px-4">
+      <div className="border-t border-border p-4 pb-6 px-4">
         <div className="max-w-3xl mx-auto">
           <ChatInput onSubmit={sendMessage} isLoading={isLoading} />
         </div>

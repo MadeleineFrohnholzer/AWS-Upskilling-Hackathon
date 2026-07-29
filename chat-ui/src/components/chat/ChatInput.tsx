@@ -44,7 +44,7 @@ export function ChatInput({ onSubmit, isLoading, className, defaultValue }: Chat
   return (
     <div
       className={cn(
-        'bg-[#111111] border border-[#333333] rounded-xl focus-within:border-[#A100FF] transition-colors',
+        'bg-card border border-border rounded-xl focus-within:border-[#A100FF] transition-colors',
         className
       )}
     >
@@ -55,15 +55,15 @@ export function ChatInput({ onSubmit, isLoading, className, defaultValue }: Chat
         onKeyDown={handleKeyDown}
         onInput={handleInput}
         placeholder="Ask anything about your documents…"
-        className="bg-transparent border-none resize-none text-white placeholder:text-[#888888] focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[48px] max-h-[144px] py-3 px-4"
+        className="bg-transparent border-none resize-none text-foreground placeholder:text-muted-foreground focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[48px] max-h-[144px] py-3 px-4"
         disabled={isLoading}
       />
       <div className="flex items-center justify-between px-3 pb-2">
         <div className="flex gap-1">
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-[#888888] hover:text-white">
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
             <Plus className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-[#888888] hover:text-white">
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
             <Sparkles className="h-4 w-4" />
           </Button>
         </div>

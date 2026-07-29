@@ -28,7 +28,7 @@ export function UserIdentity() {
           {getInitials(email)}
         </AvatarFallback>
       </Avatar>
-      <span className="text-[#888888] text-sm truncate">{email}</span>
+      <span className="text-muted-foreground text-sm truncate">{email}</span>
     </div>
   );
 }

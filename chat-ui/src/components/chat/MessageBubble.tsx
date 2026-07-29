@@ -5,7 +5,7 @@ import { AccentureMark } from '@/components/brand/AccentureMark';
 import { CitationList } from './CitationList';
 import { CodeBlock } from './CodeBlock';
 import type { Message } from '@/types/chat';
-import 'highlight.js/styles/github-dark.css';
+import 'highlight.js/styles/github.css';
 
 interface MessageBubbleProps {
   message: Message;
@@ -23,7 +23,7 @@ export function MessageBubble({ message, userEmail }: MessageBubbleProps) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end gap-3 py-2">
-        <div className="bg-[#1A1A1A] border-l-2 border-[#A100FF] rounded-2xl px-4 py-2 text-white max-w-2xl">
+        <div className="bg-muted border-l-2 border-[#A100FF] rounded-2xl px-4 py-2 text-foreground max-w-2xl">
           <p className="whitespace-pre-wrap">{message.content}</p>
         </div>
         <Avatar className="w-8 h-8 flex-shrink-0">
@@ -41,7 +41,7 @@ export function MessageBubble({ message, userEmail }: MessageBubbleProps) {
         <AccentureMark size={20} />
       </div>
       <div className="flex-1 max-w-2xl">
-        <div className="text-white prose prose-invert max-w-none">
+        <div className="text-foreground prose dark:prose-invert max-w-none">
           <ReactMarkdown
             rehypePlugins={[rehypeHighlight]}
             components={{

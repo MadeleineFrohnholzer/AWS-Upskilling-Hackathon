@@ -95,10 +95,10 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
     <Sheet open={open} onOpenChange={handleClose}>
       <SheetContent
         side="right"
-        className="w-[480px] bg-[#0A0A0A] border-l border-[#333333] text-white"
+        className="w-full sm:w-[480px] bg-background border-l border-border text-foreground"
       >
         <SheetHeader>
-          <SheetTitle className="text-white">Upload Document</SheetTitle>
+          <SheetTitle className="text-foreground">Upload Document</SheetTitle>
         </SheetHeader>
 
         {/* Step indicators */}
@@ -106,7 +106,7 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
           {[1, 2, 3].map((s) => (
             <div
               key={s}
-              className={`h-1.5 flex-1 rounded-full ${s <= step ? 'bg-[#A100FF]' : 'bg-[#333333]'}`}
+              className={`h-1.5 flex-1 rounded-full ${s <= step ? 'bg-[#A100FF]' : 'bg-border'}`}
             />
           ))}
         </div>
@@ -117,13 +117,13 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
               <label
                 htmlFor="file-input"
                 className={`block border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                  file ? 'border-[#A100FF]' : 'border-[#333333] hover:border-[#A100FF]'
+                  file ? 'border-[#A100FF]' : 'border-border hover:border-[#A100FF]'
                 }`}
               >
                 {file ? (
-                  <span className="text-white text-sm">{file.name}</span>
+                  <span className="text-foreground text-sm">{file.name}</span>
                 ) : (
-                  <span className="text-[#888888] text-sm">
+                  <span className="text-muted-foreground text-sm">
                     Drag &amp; drop or click to select a file
                     <br />
                     <span className="text-xs">.pdf, .docx, .txt, .pptx</span>
@@ -146,10 +146,10 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
           {step === 2 && (
             <div className="space-y-4">
               <div>
-                <label className="text-[#888888] text-sm mb-1 block">Industry *</label>
+                <label className="text-muted-foreground text-sm mb-1 block">Industry *</label>
                 <select
                   {...register('industry')}
-                  className="w-full bg-[#111111] border border-[#333333] rounded-md px-3 py-2 text-white text-sm focus:border-[#A100FF] outline-none"
+                  className="w-full bg-card border border-border rounded-md px-3 py-2 text-foreground text-sm focus:border-[#A100FF] outline-none"
                 >
                   <option value="">Select industry...</option>
                   {INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
@@ -158,10 +158,10 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
               </div>
 
               <div>
-                <label className="text-[#888888] text-sm mb-1 block">Document Type *</label>
+                <label className="text-muted-foreground text-sm mb-1 block">Document Type *</label>
                 <select
                   {...register('documentType')}
-                  className="w-full bg-[#111111] border border-[#333333] rounded-md px-3 py-2 text-white text-sm focus:border-[#A100FF] outline-none"
+                  className="w-full bg-card border border-border rounded-md px-3 py-2 text-foreground text-sm focus:border-[#A100FF] outline-none"
                 >
                   <option value="">Select type...</option>
                   {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -170,20 +170,20 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
               </div>
 
               <div>
-                <label className="text-[#888888] text-sm mb-1 block">Use Case</label>
+                <label className="text-muted-foreground text-sm mb-1 block">Use Case</label>
                 <Input
                   {...register('useCase')}
                   placeholder="Optional..."
-                  className="bg-[#111111] border-[#333333] text-white placeholder:text-[#888888]"
+                  className="bg-card border-border text-foreground placeholder:text-muted-foreground"
                 />
               </div>
 
               <div>
-                <label className="text-[#888888] text-sm mb-1 block">Client</label>
+                <label className="text-muted-foreground text-sm mb-1 block">Client</label>
                 <Input
                   {...register('client')}
                   placeholder="Optional..."
-                  className="bg-[#111111] border-[#333333] text-white placeholder:text-[#888888]"
+                  className="bg-card border-border text-foreground placeholder:text-muted-foreground"
                 />
               </div>
             </div>
@@ -191,8 +191,8 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
 
           {step === 3 && (
             <div className="space-y-3">
-              <Progress value={progress} className="bg-[#1A1A1A] [&>div]:bg-[#A100FF]" />
-              <p className="text-[#888888] text-sm text-center">
+              <Progress value={progress} className="bg-muted [&>div]:bg-[#A100FF]" />
+              <p className="text-muted-foreground text-sm text-center">
                 {progress < 100 ? `Uploading… ${progress}%` : 'Processing…'}
               </p>
             </div>
@@ -203,7 +203,7 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
               <Button
                 type="button"
                 variant="ghost"
-                className="flex-1 border border-[#333333] text-[#888888] hover:text-white"
+                className="flex-1 border border-border text-muted-foreground hover:text-foreground"
                 onClick={() => setStep(1)}
               >
                 Back

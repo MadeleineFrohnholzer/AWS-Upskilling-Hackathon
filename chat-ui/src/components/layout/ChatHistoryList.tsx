@@ -49,7 +49,7 @@ export function ChatHistoryList() {
     return (
       <div className="p-2 space-y-1">
         {[...Array(4)].map((_, i) => (
-          <Skeleton key={i} className="h-8 bg-[#1A1A1A] rounded mx-2 my-1" />
+          <Skeleton key={i} className="h-8 bg-muted rounded mx-2 my-1" />
         ))}
       </div>
     );
@@ -63,7 +63,7 @@ export function ChatHistoryList() {
         if (items.length === 0) return null;
         return (
           <div key={label}>
-            <p className="text-[#888888] text-xs font-semibold uppercase tracking-widest px-3 mt-4 mb-1">
+            <p className="text-muted-foreground text-xs font-semibold uppercase tracking-widest px-3 mt-4 mb-1">
               {label}
             </p>
             {items.map((session) => {
@@ -74,8 +74,8 @@ export function ChatHistoryList() {
                   variant="ghost"
                   className={`w-full justify-start text-sm px-3 py-2 h-auto truncate ${
                     isActive
-                      ? 'bg-[rgba(161,0,255,0.08)] border-l-2 border-[#A100FF] text-white'
-                      : 'text-[#888888] hover:text-white hover:bg-[#1A1A1A]'
+                      ? 'bg-[rgba(161,0,255,0.08)] border-l-2 border-[#A100FF] text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }`}
                   onClick={() => router.push(`/chat/${session.sessionId}`)}
                 >

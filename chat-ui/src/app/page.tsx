@@ -10,7 +10,7 @@ export default function HomePage() {
   const { messages, isLoading, sendMessage } = useChatSession();
 
   return (
-    <div className="flex flex-col h-screen bg-black">
+    <div className="flex flex-col h-screen bg-background">
       <TopBar />
       {messages.length === 0 ? (
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -21,7 +21,7 @@ export default function HomePage() {
           <div className="flex-1 flex flex-col overflow-hidden">
             <MessageList messages={messages} isLoading={isLoading} />
           </div>
-          <div className="border-t border-[#333333] p-4">
+          <div className="border-t border-border p-4">
             <div className="max-w-3xl mx-auto">
               <ChatInput onSubmit={sendMessage} isLoading={isLoading} />
             </div>

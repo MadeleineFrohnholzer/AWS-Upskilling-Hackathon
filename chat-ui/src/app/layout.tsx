@@ -16,12 +16,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <body className="bg-black text-white antialiased">
+    <html lang="en" suppressHydrationWarning>
+      <body className="bg-background text-foreground antialiased">
         <Providers>
           <div className="flex min-h-screen">
             <AppSidebar />
-            <main className="ml-64 flex-1 flex flex-col min-h-screen">
+            <main className="md:ml-64 flex-1 flex flex-col min-h-screen">
               {children}
             </main>
           </div>
