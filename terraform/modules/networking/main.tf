@@ -23,7 +23,7 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
 
   tags = {
-    Name = "platform-network"
+    Name = "${var.project_name}-vpc"
   }
 }
 
@@ -38,7 +38,7 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = false # No public IPs — VPN-only architecture
 
   tags = {
-    Name = "public-subnet-${var.availability_zones[count.index]}"
+    Name = "${var.project_name}-public-${var.availability_zones[count.index]}"
     Tier = "public"
   }
 }
@@ -53,7 +53,7 @@ resource "aws_subnet" "private" {
   availability_zone = var.availability_zones[count.index]
 
   tags = {
-    Name = "private-subnet-${var.availability_zones[count.index]}"
+    Name = "${var.project_name}-private-${var.availability_zones[count.index]}"
     Tier = "private"
   }
 }
@@ -65,7 +65,7 @@ resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name = "platform-igw"
+    Name = "${var.project_name}-igw"
   }
 }
 
@@ -83,7 +83,7 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name = "public-route-table"
+    Name = "${var.project_name}-public-rt"
   }
 }
 
@@ -98,7 +98,7 @@ resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name = "private-route-table"
+    Name = "${var.project_name}-private-rt"
   }
 }
 
@@ -116,7 +116,7 @@ resource "aws_eip" "nat" {
   domain = "vpc"
 
   tags = {
-    Name = "nat-elastic-ip"
+    Name = "${var.project_name}-nat-eip"
   }
 }
 
@@ -126,7 +126,7 @@ resource "aws_nat_gateway" "main" {
   subnet_id     = aws_subnet.public[0].id
 
   tags = {
-    Name = "nat-gateway"
+    Name = "${var.project_name}-nat-gw"
   }
 
   depends_on = [aws_internet_gateway.main]
@@ -147,7 +147,7 @@ resource "aws_route" "private_nat" {
 # Security Group for Interface Endpoints
 # -----------------------------------------------------------------------------
 resource "aws_security_group" "vpc_endpoints" {
-  name_prefix = "vpce-"
+  name_prefix = "${var.project_name}-vpce-"
   vpc_id      = aws_vpc.main.id
   description = "Allow HTTPS from VPC to VPC Interface Endpoints"
 
@@ -168,7 +168,7 @@ resource "aws_security_group" "vpc_endpoints" {
   }
 
   tags = {
-    Name = "vpc-endpoint-sg"
+    Name = "${var.project_name}-vpce-sg"
   }
 }
 
@@ -182,7 +182,7 @@ resource "aws_vpc_endpoint" "s3" {
   route_table_ids   = [aws_route_table.private.id, aws_route_table.public.id]
 
   tags = {
-    Name = "s3-gateway-endpoint"
+    Name = "${var.project_name}-s3-endpoint"
   }
 }
 
@@ -193,7 +193,7 @@ resource "aws_vpc_endpoint" "dynamodb" {
   route_table_ids   = [aws_route_table.private.id]
 
   tags = {
-    Name = "dynamodb-gateway-endpoint"
+    Name = "${var.project_name}-dynamodb-endpoint"
   }
 }
 
@@ -211,7 +211,7 @@ resource "aws_vpc_endpoint" "bedrock_runtime" {
   private_dns_enabled = true
 
   tags = {
-    Name = "bedrock-runtime-endpoint"
+    Name = "${var.project_name}-bedrock-runtime-endpoint"
   }
 }
 
@@ -225,7 +225,7 @@ resource "aws_vpc_endpoint" "bedrock_agent" {
   private_dns_enabled = true
 
   tags = {
-    Name = "bedrock-agent-endpoint"
+    Name = "${var.project_name}-bedrock-agent-endpoint"
   }
 }
 
@@ -239,7 +239,7 @@ resource "aws_vpc_endpoint" "bedrock_agent_runtime" {
   private_dns_enabled = true
 
   tags = {
-    Name = "bedrock-agent-runtime-endpoint"
+    Name = "${var.project_name}-bedrock-agent-runtime-endpoint"
   }
 }
 
@@ -253,7 +253,7 @@ resource "aws_vpc_endpoint" "textract" {
   private_dns_enabled = true
 
   tags = {
-    Name = "textract-endpoint"
+    Name = "${var.project_name}-textract-endpoint"
   }
 }
 
@@ -267,7 +267,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
   private_dns_enabled = true
 
   tags = {
-    Name = "ecr-api-endpoint"
+    Name = "${var.project_name}-ecr-api-endpoint"
   }
 }
 
@@ -281,7 +281,7 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   private_dns_enabled = true
 
   tags = {
-    Name = "ecr-dkr-endpoint"
+    Name = "${var.project_name}-ecr-dkr-endpoint"
   }
 }
 
@@ -295,7 +295,7 @@ resource "aws_vpc_endpoint" "logs" {
   private_dns_enabled = true
 
   tags = {
-    Name = "cloudwatch-logs-endpoint"
+    Name = "${var.project_name}-logs-endpoint"
   }
 }
 
@@ -309,7 +309,7 @@ resource "aws_vpc_endpoint" "sts" {
   private_dns_enabled = true
 
   tags = {
-    Name = "sts-endpoint"
+    Name = "${var.project_name}-sts-endpoint"
   }
 }
 
@@ -321,7 +321,7 @@ resource "aws_vpc_endpoint" "sts" {
 # ALB Security Group
 # -----------------------------------------------------------------------------
 resource "aws_security_group" "alb" {
-  name_prefix = "internal-alb-"
+  name_prefix = "${var.project_name}-alb-"
   vpc_id      = aws_vpc.main.id
   description = "Internal ALB - accepts HTTPS from VPN/corporate network"
 
@@ -350,7 +350,7 @@ resource "aws_security_group" "alb" {
   }
 
   tags = {
-    Name = "internal-alb-sg"
+    Name = "${var.project_name}-alb-sg"
   }
 }
 
@@ -358,14 +358,14 @@ resource "aws_security_group" "alb" {
 # Internal Application Load Balancer
 # -----------------------------------------------------------------------------
 resource "aws_lb" "internal" {
-  name               = "platform-alb"
+  name               = "${var.project_name}-internal-alb"
   internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.private[*].id
 
   tags = {
-    Name = "platform-alb"
+    Name = "${var.project_name}-internal-alb"
   }
 }
 
@@ -391,7 +391,7 @@ resource "aws_lb_listener" "http" {
 
 # Security group for Lambda functions (private, no inbound)
 resource "aws_security_group" "lambda" {
-  name_prefix = "lambda-"
+  name_prefix = "${var.project_name}-lambda-"
   vpc_id      = aws_vpc.main.id
   description = "Lambda functions - outbound to VPC endpoints only"
 
@@ -420,13 +420,13 @@ resource "aws_security_group" "lambda" {
   }
 
   tags = {
-    Name = "lambda-sg"
+    Name = "${var.project_name}-lambda-sg"
   }
 }
 
 # Security group for ECS tasks
 resource "aws_security_group" "ecs_tasks" {
-  name_prefix = "ecs-tasks-"
+  name_prefix = "${var.project_name}-ecs-"
   vpc_id      = aws_vpc.main.id
   description = "ECS Fargate tasks - accepts traffic from ALB"
 
@@ -447,6 +447,6 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   tags = {
-    Name = "ecs-tasks-sg"
+    Name = "${var.project_name}-ecs-tasks-sg"
   }
 }

@@ -3,7 +3,7 @@
 # =============================================================================
 
 locals {
-  agent_name = "bedrock-retrieval-agent"
+  agent_name = "${var.project_name}-agent"
   region     = data.aws_region.current.id
   account_id = data.aws_caller_identity.current.account_id
 }
@@ -14,7 +14,7 @@ data "aws_caller_identity" "current" {}
 # ── IAM ──────────────────────────────────────────────────────────────────────
 
 resource "aws_iam_role" "agent" {
-  name = "platform-bedrock-agent"
+  name = "platform-${var.project_name}-bedrock-agent"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -77,7 +77,7 @@ resource "aws_bedrockagent_agent_knowledge_base_association" "main" {
 
 resource "aws_bedrockagent_agent_alias" "live" {
   agent_id         = aws_bedrockagent_agent.main.id
-  agent_alias_name = "live"
+  agent_alias_name = var.environment
 
   depends_on = [aws_bedrockagent_agent.main]
 }

@@ -21,12 +21,4 @@ Thumbs.db
 
 # Environment
 .env
-.env.local
-.env*.local
 *.pem
-
-# Next.js build artifacts
-chat-ui/.next/
-chat-ui/node_modules/
-chat-ui/next-env.d.ts
-chat-ui/tsconfig.tsbuildinfo

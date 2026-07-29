@@ -111,14 +111,14 @@ module "compute" {
   proxy_image            = var.proxy_image
   bedrock_agent_id       = module.bedrock_agent.agent_id
   bedrock_agent_alias_id = module.bedrock_agent.agent_alias_id
-  ecs_service_name       = "chat-application-service"
+  ecs_service_name       = "${var.project_name}-open-webui"
 }
 
 # -----------------------------------------------------------------------------
 # Cognito User Pool + Entra ID SSO Federation
 # -----------------------------------------------------------------------------
 resource "aws_cognito_user_pool" "main" {
-  name = "user-authentication-pool"
+  name = "${var.project_name}-${var.environment}-user-pool"
 
   admin_create_user_config {
     allow_admin_create_user_only = true
@@ -136,7 +136,7 @@ resource "aws_cognito_user_pool" "main" {
 
 # Cognito hosted-UI domain (used by ALB for the OAuth redirect)
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "chat-application-auth"
+  domain       = "${var.project_name}-${var.environment}"
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
@@ -169,7 +169,7 @@ resource "aws_cognito_identity_provider" "entra_id" {
 }
 
 resource "aws_cognito_user_pool_client" "chat_app" {
-  name         = "chat-app-auth-client"
+  name         = "${var.project_name}-${var.environment}-chat-app-client"
   user_pool_id = aws_cognito_user_pool.main.id
 
   generate_secret = true
@@ -201,7 +201,7 @@ resource "aws_cognito_user_pool_client" "chat_app" {
 
 # SSM SecureString for Open WebUI session-signing key (min 32 chars)
 resource "aws_ssm_parameter" "webui_secret_key" {
-  name  = "/chat-application/secret-key"
+  name  = "/${var.project_name}/open-webui/secret-key"
   type  = "SecureString"
   value = "REPLACE_ME_AFTER_FIRST_DEPLOY_MIN_32_CHARS_LONG"
 
@@ -228,7 +228,7 @@ resource "aws_iam_role_policy" "ecs_task_execution_ssm" {
 
 # Task role - runtime AWS API calls from inside the container (named platform-*)
 resource "aws_iam_role" "ecs_task" {
-  name = "platform-chat-application-task"
+  name = "platform-${var.project_name}-open-webui-task"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -273,7 +273,7 @@ resource "aws_iam_role_policy" "ecs_task" {
 
 # CloudWatch log group for Open WebUI
 resource "aws_cloudwatch_log_group" "open_webui" {
-  name              = "/ecs/open-webui"
+  name              = "/ecs/${var.project_name}-open-webui"
   retention_in_days = 14
 }
 
@@ -283,7 +283,7 @@ resource "aws_cloudwatch_log_group" "open_webui" {
 
 # ALB target group - ip type required for Fargate awsvpc networking
 resource "aws_lb_target_group" "chat_frontend" {
-  name        = "chat-application-tg"
+  name        = "${var.project_name}-chat-tg"
   port        = 8080
   protocol    = "HTTP"
   vpc_id      = local.vpc_id
@@ -351,7 +351,7 @@ resource "aws_lb_listener_rule" "chat_frontend_noauth" {
 
 # ECS task definition - Open WebUI with Bedrock Agent env vars
 resource "aws_ecs_task_definition" "open_webui" {
-  family                   = "open-webui-task"
+  family                   = "${var.project_name}-open-webui"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "1024"
@@ -396,7 +396,7 @@ resource "aws_ecs_task_definition" "open_webui" {
 
 # ECS Fargate service
 resource "aws_ecs_service" "open_webui" {
-  name                 = "chat-application-service"
+  name                 = "${var.project_name}-open-webui"
   cluster              = module.compute.ecs_cluster_arn
   task_definition      = aws_ecs_task_definition.open_webui.arn
   desired_count        = 1
@@ -426,7 +426,7 @@ resource "aws_appautoscaling_target" "open_webui" {
 }
 
 resource "aws_appautoscaling_policy" "open_webui_cpu" {
-  name               = "chat-application-cpu-scaling"
+  name               = "${var.project_name}-open-webui-cpu-scaling"
   policy_type        = "TargetTrackingScaling"
   resource_id        = aws_appautoscaling_target.open_webui.resource_id
   scalable_dimension = aws_appautoscaling_target.open_webui.scalable_dimension

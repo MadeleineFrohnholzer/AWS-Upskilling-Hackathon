@@ -8,7 +8,7 @@
 #   docker push <ecr_repository_url>:latest
 
 resource "aws_ecr_repository" "proxy" {
-  name                 = "bedrock-proxy-image-repo"
+  name                 = "${var.project_name}-bedrock-proxy"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -16,7 +16,7 @@ resource "aws_ecr_repository" "proxy" {
   }
 
   tags = {
-    Name        = "bedrock-proxy-image-repo"
+    Name        = "${var.project_name}-bedrock-proxy"
     Environment = var.environment
   }
 }

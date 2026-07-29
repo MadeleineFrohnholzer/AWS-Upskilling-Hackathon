@@ -6,7 +6,7 @@
 # bucket, then deletes the originals. Future text transformation goes here.
 
 locals {
-  function_name = "document-ingestion-trigger"
+  function_name = "knowledge-base-ingestion-trigger"
 }
 
 # ── IAM ──────────────────────────────────────────────────────────────────────
