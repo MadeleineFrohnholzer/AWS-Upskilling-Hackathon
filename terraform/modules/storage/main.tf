@@ -6,10 +6,10 @@
 # S3: Document Landing Bucket (raw uploads)
 # -----------------------------------------------------------------------------
 resource "aws_s3_bucket" "landing" {
-  bucket_prefix = "${var.project_name}-landing-"
+  bucket_prefix = "document-upload-landing-"
 
   tags = {
-    Name        = "${var.project_name}-landing"
+    Name        = "document-upload-landing"
     Environment = var.environment
   }
 }
@@ -42,10 +42,10 @@ resource "aws_s3_bucket_public_access_block" "landing" {
 # S3: Processed Documents Bucket
 # -----------------------------------------------------------------------------
 resource "aws_s3_bucket" "processed" {
-  bucket_prefix = "${var.project_name}-processed-"
+  bucket_prefix = "document-processed-store-"
 
   tags = {
-    Name        = "${var.project_name}-processed"
+    Name        = "document-processed-store"
     Environment = var.environment
   }
 }
@@ -78,7 +78,7 @@ resource "aws_s3_bucket_public_access_block" "processed" {
 # DynamoDB: Sessions Table
 # -----------------------------------------------------------------------------
 resource "aws_dynamodb_table" "sessions" {
-  name         = "${var.project_name}-sessions"
+  name         = "chat-session-store"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "session_id"
 
@@ -93,7 +93,7 @@ resource "aws_dynamodb_table" "sessions" {
   }
 
   tags = {
-    Name        = "${var.project_name}-sessions"
+    Name        = "chat-session-store"
     Environment = var.environment
   }
 }
@@ -116,7 +116,7 @@ resource "aws_s3_bucket_cors_configuration" "landing" {
 # DynamoDB: Document Audit Trail Table
 # -----------------------------------------------------------------------------
 resource "aws_dynamodb_table" "document_audit_trail" {
-  name         = "${var.project_name}-document-audit-trail"
+  name         = "document-audit-trail"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "filename"
 
@@ -126,7 +126,7 @@ resource "aws_dynamodb_table" "document_audit_trail" {
   }
 
   tags = {
-    Name        = "${var.project_name}-document-audit-trail"
+    Name        = "document-audit-trail"
     Environment = var.environment
   }
 }

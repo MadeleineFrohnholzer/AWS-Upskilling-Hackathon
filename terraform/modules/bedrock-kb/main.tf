@@ -3,7 +3,7 @@
 # =============================================================================
 
 locals {
-  kb_name             = "${var.project_name}-kb-${var.environment}"
+  kb_name             = "content-knowledge-base"
   embedding_model_arn = "arn:aws:bedrock:${var.region}::foundation-model/amazon.titan-embed-text-v2:0"
   embedding_dimensions = 1024
   distance_metric     = "cosine"
@@ -35,12 +35,12 @@ data "aws_caller_identity" "current" {}
 # ── S3 Vectors ────────────────────────────────────────────────────────────────
 
 resource "aws_s3vectors_vector_bucket" "kb" {
-  vector_bucket_name = "${var.project_name}-vectors-${var.environment}"
+  vector_bucket_name = "content-knowledge-base"
 }
 
 resource "aws_s3vectors_index" "kb" {
   vector_bucket_name = aws_s3vectors_vector_bucket.kb.vector_bucket_name
-  index_name         = "${var.project_name}-kb-index"
+  index_name         = "content-vector-search-index"
   data_type          = local.data_type
   dimension          = local.embedding_dimensions
   distance_metric    = local.distance_metric
@@ -115,7 +115,7 @@ resource "aws_bedrockagent_knowledge_base" "main" {
 
 resource "aws_bedrockagent_data_source" "processed" {
   knowledge_base_id = aws_bedrockagent_knowledge_base.main.id
-  name              = "${local.kb_name}-processed-docs"
+  name              = "content-knowledge-base-datasource"
 
   data_source_configuration {
     type = "S3"

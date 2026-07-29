@@ -6,7 +6,7 @@
 # bucket, then deletes the originals. Future text transformation goes here.
 
 locals {
-  function_name = "${var.project_name}-ingest-${var.environment}"
+  function_name = "knowledge-base-ingestion-trigger"
 }
 
 # ── IAM ──────────────────────────────────────────────────────────────────────
