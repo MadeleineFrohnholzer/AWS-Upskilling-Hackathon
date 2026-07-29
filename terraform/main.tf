@@ -1,10 +1,3 @@
-# =============================================================================
-# Team 2 - Access / Knowledge App (Milestone 1)
-# =============================================================================
-# Owns: Cognito, ECS Fargate, ECR, Bedrock Agent, ALB target groups
-
-
-
 terraform {
   required_version = ">= 1.7.0"
 
@@ -17,7 +10,7 @@ terraform {
 
   backend "s3" {
     bucket         = "hackathon-tf-state-064453091991"
-    key            = "team2/terraform.tfstate"
+    key            = "terraform.tfstate"
     region         = "eu-central-1"
     dynamodb_table = "hackathon-tf-locks"
     encrypt        = true
@@ -31,76 +24,129 @@ provider "aws" {
     tags = {
       Project     = var.project_name
       Environment = var.environment
-      Team        = "team2-app"
       ManagedBy   = "terraform"
     }
-  }
-}
-
-# -----------------------------------------------------------------------------
-# Read shared infrastructure outputs
-# -----------------------------------------------------------------------------
-data "terraform_remote_state" "shared" {
-  backend = "s3"
-  config = {
-    bucket = "hackathon-tf-state-064453091991"
-    key    = "shared/terraform.tfstate"
-    region = "eu-central-1"
-  }
-}
-
-# Read Team 1 outputs (for Bedrock KB ID)
-data "terraform_remote_state" "team1" {
-  backend = "s3"
-  config = {
-    bucket = "hackathon-tf-state-064453091991"
-    key    = "team1/terraform.tfstate"
-    region = "eu-central-1"
   }
 }
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
-# Convenience locals from shared/team1 state
 locals {
-  vpc_id                      = data.terraform_remote_state.shared.outputs.vpc_id
-  private_subnet_ids          = data.terraform_remote_state.shared.outputs.private_subnet_ids
-  alb_arn                     = data.terraform_remote_state.shared.outputs.alb_arn
-  alb_listener_arn            = data.terraform_remote_state.shared.outputs.alb_listener_arn
-  ecs_tasks_security_group_id = data.terraform_remote_state.shared.outputs.ecs_tasks_security_group_id
+  vpc_id                      = module.networking.vpc_id
+  private_subnet_ids          = module.networking.private_subnet_ids
+  lambda_security_group_id    = module.networking.lambda_security_group_id
+  alb_arn                     = module.networking.alb_arn
+  alb_listener_arn            = module.networking.alb_listener_arn
+  ecs_tasks_security_group_id = module.networking.ecs_tasks_security_group_id
   account_id                  = data.aws_caller_identity.current.account_id
   region                      = data.aws_region.current.region
   container_image             = var.open_webui_image != "" ? var.open_webui_image : "${module.compute.ecr_repository_url}:latest"
 }
 
-# -----------------------------------------------------------------------------
-# Bedrock Agent (grounded retrieval with inline citations)
-# -----------------------------------------------------------------------------
-module "bedrock_agent" {
-  source = "../modules/bedrock-agent"
+# =============================================================================
+# Networking (formerly shared)
+# =============================================================================
 
-  project_name       = var.project_name
-  environment        = var.environment
-  knowledge_base_id  = var.knowledge_base_id
-  knowledge_base_arn = var.knowledge_base_arn
+module "networking" {
+  source = "./modules/networking"
+
+  project_name         = var.project_name
+  region               = var.region
+  vpc_cidr             = var.vpc_cidr
+  public_subnet_cidrs  = var.public_subnet_cidrs
+  private_subnet_cidrs = var.private_subnet_cidrs
+  availability_zones   = var.availability_zones
+  enable_nat_gateway   = var.enable_nat_gateway
 }
 
-# -----------------------------------------------------------------------------
-# Bedrock Proxy ECR repository
-# -----------------------------------------------------------------------------
-module "bedrock_proxy" {
-  source = "../modules/bedrock-proxy"
+# =============================================================================
+# Storage (formerly team1)
+# =============================================================================
+
+module "storage" {
+  source = "./modules/storage"
 
   project_name = var.project_name
   environment  = var.environment
 }
 
-# -----------------------------------------------------------------------------
-# Compute Module (ECS, ECR, ALB target group attachment)
-# -----------------------------------------------------------------------------
+module "presigned_url_lambda" {
+  source = "./modules/presigned-url-lambda"
+
+  landing_bucket_id            = module.storage.landing_bucket_id
+  landing_bucket_arn           = module.storage.landing_bucket_arn
+  subnet_ids                   = local.private_subnet_ids
+  security_group_id            = local.lambda_security_group_id
+  presigned_url_expiry_minutes = 30
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+module "ingest_lambda" {
+  source = "./modules/ingest-lambda"
+
+  landing_bucket_id    = module.storage.landing_bucket_id
+  landing_bucket_arn   = module.storage.landing_bucket_arn
+  processed_bucket_id  = module.storage.processed_bucket_id
+  processed_bucket_arn = module.storage.processed_bucket_arn
+  subnet_ids           = local.private_subnet_ids
+  security_group_id    = local.lambda_security_group_id
+  kb_id                = module.bedrock_kb.knowledge_base_id
+  kb_data_source_id    = module.bedrock_kb.data_source_id
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+module "bedrock_kb" {
+  source = "./modules/bedrock-kb"
+
+  processed_bucket_id  = module.storage.processed_bucket_id
+  processed_bucket_arn = module.storage.processed_bucket_arn
+  region               = var.region
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+module "audit_lambda" {
+  source = "./modules/audit-lambda"
+
+  processed_bucket_id  = module.storage.processed_bucket_id
+  processed_bucket_arn = module.storage.processed_bucket_arn
+  audit_table_name     = module.storage.upload_audit_table_name
+  audit_table_arn      = module.storage.upload_audit_table_arn
+  subnet_ids           = local.private_subnet_ids
+  security_group_id    = local.lambda_security_group_id
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+# =============================================================================
+# Bedrock Agent (formerly team2)
+# =============================================================================
+
+module "bedrock_agent" {
+  source = "./modules/bedrock-agent"
+
+  project_name       = var.project_name
+  environment        = var.environment
+  knowledge_base_id  = module.bedrock_kb.knowledge_base_id
+  knowledge_base_arn = module.bedrock_kb.knowledge_base_arn
+}
+
+module "bedrock_proxy" {
+  source = "./modules/bedrock-proxy"
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
 module "compute" {
-  source = "../modules/compute"
+  source = "./modules/compute"
 
   project_name           = var.project_name
   environment            = var.environment
@@ -114,9 +160,10 @@ module "compute" {
   ecs_service_name       = "chat-application-service"
 }
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # Cognito User Pool + Entra ID SSO Federation
-# -----------------------------------------------------------------------------
+# =============================================================================
+
 resource "aws_cognito_user_pool" "main" {
   name = "user-authentication-pool"
 
@@ -134,14 +181,11 @@ resource "aws_cognito_user_pool" "main" {
   }
 }
 
-# Cognito hosted-UI domain (used by ALB for the OAuth redirect)
 resource "aws_cognito_user_pool_domain" "main" {
   domain       = "chat-application-auth"
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
-# Entra ID OIDC identity provider — only created when secrets are configured.
-# Set ENTRA_TENANT_ID, ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET in GitHub Actions secrets.
 resource "aws_cognito_identity_provider" "entra_id" {
   count = var.entra_tenant_id != "" ? 1 : 0
 
@@ -195,11 +239,10 @@ resource "aws_cognito_user_pool_client" "chat_app" {
   depends_on = [aws_cognito_identity_provider.entra_id]
 }
 
-# -----------------------------------------------------------------------------
-# ECS Fargate Service behind Internal ALB (issue #39)
-# -----------------------------------------------------------------------------
+# =============================================================================
+# ECS / SSM / IAM / CloudWatch
+# =============================================================================
 
-# SSM SecureString for Open WebUI session-signing key (min 32 chars)
 resource "aws_ssm_parameter" "webui_secret_key" {
   name  = "/chat-application/secret-key"
   type  = "SecureString"
@@ -210,7 +253,6 @@ resource "aws_ssm_parameter" "webui_secret_key" {
   }
 }
 
-# Execution role policy - allows pulling SSM SecureString at task startup
 resource "aws_iam_role_policy" "ecs_task_execution_ssm" {
   name = "ssm-secret-read"
   role = module.compute.ecs_task_execution_role_name
@@ -226,7 +268,6 @@ resource "aws_iam_role_policy" "ecs_task_execution_ssm" {
   })
 }
 
-# Task role - runtime AWS API calls from inside the container (named platform-*)
 resource "aws_iam_role" "ecs_task" {
   name = "platform-chat-application-task"
 
@@ -256,9 +297,9 @@ resource "aws_iam_role_policy" "ecs_task" {
           "bedrock-agent-runtime:RetrieveAndGenerate",
         ]
         Resource = [
-          "arn:aws:bedrock:${local.region}:${local.account_id}:agent/${var.bedrock_agent_id}",
-          "arn:aws:bedrock:${local.region}:${local.account_id}:agent-alias/${var.bedrock_agent_id}/*",
-          "arn:aws:bedrock:${local.region}:${local.account_id}:knowledge-base/${var.bedrock_kb_id}",
+          "arn:aws:bedrock:${local.region}:${local.account_id}:agent/${module.bedrock_agent.agent_id}",
+          "arn:aws:bedrock:${local.region}:${local.account_id}:agent-alias/${module.bedrock_agent.agent_id}/*",
+          "arn:aws:bedrock:${local.region}:${local.account_id}:knowledge-base/${module.bedrock_kb.knowledge_base_id}",
         ]
       },
       {
@@ -271,17 +312,15 @@ resource "aws_iam_role_policy" "ecs_task" {
   })
 }
 
-# CloudWatch log group for Open WebUI
 resource "aws_cloudwatch_log_group" "open_webui" {
   name              = "/ecs/open-webui"
   retention_in_days = 14
 }
 
-# -----------------------------------------------------------------------------
-# ALB Target Group + Cognito Listener Rule (issue #36)
-# -----------------------------------------------------------------------------
+# =============================================================================
+# ALB Target Group + Listener Rules
+# =============================================================================
 
-# ALB target group - ip type required for Fargate awsvpc networking
 resource "aws_lb_target_group" "chat_frontend" {
   name        = "chat-application-tg"
   port        = 8080
@@ -301,7 +340,6 @@ resource "aws_lb_target_group" "chat_frontend" {
   }
 }
 
-# Listener rule with Cognito auth — only when callback URLs are configured
 resource "aws_lb_listener_rule" "chat_frontend" {
   count        = length(compact(var.cognito_callback_urls)) > 0 ? 1 : 0
   listener_arn = local.alb_listener_arn
@@ -331,7 +369,6 @@ resource "aws_lb_listener_rule" "chat_frontend" {
   }
 }
 
-# Fallback forward rule (no auth) — used when Cognito callback URLs are not yet configured
 resource "aws_lb_listener_rule" "chat_frontend_noauth" {
   count        = length(compact(var.cognito_callback_urls)) > 0 ? 0 : 1
   listener_arn = local.alb_listener_arn
@@ -349,7 +386,10 @@ resource "aws_lb_listener_rule" "chat_frontend_noauth" {
   }
 }
 
-# ECS task definition - Open WebUI with Bedrock Agent env vars
+# =============================================================================
+# ECS Task Definition + Service + Autoscaling
+# =============================================================================
+
 resource "aws_ecs_task_definition" "open_webui" {
   family                   = "open-webui-task"
   network_mode             = "awsvpc"
@@ -368,9 +408,9 @@ resource "aws_ecs_task_definition" "open_webui" {
       { name = "ENABLE_SIGNUP", value = "false" },
       { name = "DEFAULT_USER_ROLE", value = "user" },
       { name = "AWS_REGION", value = local.region },
-      { name = "BEDROCK_AGENT_ID", value = var.bedrock_agent_id },
-      { name = "BEDROCK_AGENT_ALIAS_ID", value = var.bedrock_agent_alias_id },
-      { name = "KNOWLEDGE_BASE_ID", value = var.bedrock_kb_id },
+      { name = "BEDROCK_AGENT_ID", value = module.bedrock_agent.agent_id },
+      { name = "BEDROCK_AGENT_ALIAS_ID", value = module.bedrock_agent.agent_alias_id },
+      { name = "KNOWLEDGE_BASE_ID", value = module.bedrock_kb.knowledge_base_id },
     ]
     secrets = [{
       name      = "WEBUI_SECRET_KEY"
@@ -394,7 +434,6 @@ resource "aws_ecs_task_definition" "open_webui" {
   }])
 }
 
-# ECS Fargate service
 resource "aws_ecs_service" "open_webui" {
   name                 = "chat-application-service"
   cluster              = module.compute.ecs_cluster_arn
@@ -416,7 +455,6 @@ resource "aws_ecs_service" "open_webui" {
   }
 }
 
-# Autoscaling - scale between 1 and 4 tasks based on CPU
 resource "aws_appautoscaling_target" "open_webui" {
   max_capacity       = 4
   min_capacity       = 1
@@ -438,5 +476,4 @@ resource "aws_appautoscaling_policy" "open_webui_cpu" {
     }
     target_value = 70.0
   }
-
 }
