@@ -210,6 +210,20 @@ resource "aws_vpc_endpoint" "bedrock_runtime" {
   }
 }
 
+# Bedrock Agent (for KB management — StartIngestionJob, etc.)
+resource "aws_vpc_endpoint" "bedrock_agent" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.region}.bedrock-agent"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-bedrock-agent-endpoint"
+  }
+}
+
 # Bedrock Agent Runtime (for agent invocation)
 resource "aws_vpc_endpoint" "bedrock_agent_runtime" {
   vpc_id              = aws_vpc.main.id
