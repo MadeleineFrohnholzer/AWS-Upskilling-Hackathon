@@ -109,6 +109,7 @@ module "compute" {
   proxy_image            = var.proxy_image
   bedrock_agent_id       = module.bedrock_agent.agent_id
   bedrock_agent_alias_id = module.bedrock_agent.agent_alias_id
+  ecs_service_name       = "${var.project_name}-open-webui"
 }
 
 # -----------------------------------------------------------------------------
