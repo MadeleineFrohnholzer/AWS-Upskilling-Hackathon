@@ -42,6 +42,7 @@ jobs:
               - 'terraform/modules/presigned-url-lambda/**'
               - 'terraform/modules/ingest-lambda/**'
               - 'terraform/modules/bedrock-kb/**'
+              - 'terraform/modules/audit-lambda/**'
             team2:
               - 'terraform/team2/**'
               - 'terraform/modules/compute/**'
