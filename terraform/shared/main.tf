@@ -35,6 +35,16 @@ provider "aws" {
   }
 }
 
+# ECS service linked role — required before any ECS service can be created.
+# Safe to apply repeatedly; AWS ignores re-creation if the role already exists.
+resource "aws_iam_service_linked_role" "ecs" {
+  aws_service_name = "ecs.amazonaws.com"
+
+  lifecycle {
+    ignore_changes = all
+  }
+}
+
 module "networking" {
   source = "../modules/networking"
 

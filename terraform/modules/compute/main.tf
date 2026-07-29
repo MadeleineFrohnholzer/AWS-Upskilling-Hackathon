@@ -329,9 +329,11 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = {
           title  = "ALB Response Time P95 (s)"
           view   = "timeSeries"
+          stat   = "p95"
+          period = 60
           region = data.aws_region.current.name
           metrics = [
-            ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", data.aws_lb.shared.arn_suffix, { extendedStatistic = "p95", period = 60, label = "p95" }]
+            ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", data.aws_lb.shared.arn_suffix]
           ]
         }
       },
