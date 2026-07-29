@@ -131,6 +131,20 @@ module "audit_lambda" {
 }
 
 # -----------------------------------------------------------------------------
+# Weekly Digest Lambda
+# -----------------------------------------------------------------------------
+module "digest_lambda" {
+  source = "../modules/digest-lambda"
+
+  audit_table_name = module.storage.upload_audit_table_name
+  audit_table_arn  = module.storage.upload_audit_table_arn
+  sender_email     = "nicolas.schmid@accenture.com"
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+# -----------------------------------------------------------------------------
 # TODO: Add these resources during the hackathon
 # -----------------------------------------------------------------------------
 # - API Gateway: HTTP API for upload endpoint (POST /upload → presigned_url_lambda)

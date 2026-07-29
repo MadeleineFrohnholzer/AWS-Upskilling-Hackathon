@@ -125,6 +125,31 @@ resource "aws_dynamodb_table" "document_audit_trail" {
     type = "S"
   }
 
+  attribute {
+    name = "Industry"
+    type = "S"
+  }
+
+  attribute {
+    name = "updated_at"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "Industry-updated_at-index"
+    projection_type = "ALL"
+
+    key_schema {
+      attribute_name = "Industry"
+      key_type       = "HASH"
+    }
+
+    key_schema {
+      attribute_name = "updated_at"
+      key_type       = "RANGE"
+    }
+  }
+
   tags = {
     Name        = "document-audit-trail"
     Environment = var.environment
