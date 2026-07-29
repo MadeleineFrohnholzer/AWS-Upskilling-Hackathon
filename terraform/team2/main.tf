@@ -436,4 +436,5 @@ resource "aws_appautoscaling_policy" "open_webui_cpu" {
     }
     target_value = 70.0
   }
+
 }
