@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Graphik', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Dark-only Accenture brand palette */
+:root,
+.dark {
+  --background:         0 0% 0%;
+  --foreground:         0 0% 100%;
+  --card:               0 0% 7%;
+  --card-foreground:    0 0% 100%;
+  --muted:              0 0% 10%;
+  --muted-foreground:   0 0% 53%;
+  --border:             0 0% 20%;
+  --input:              0 0% 7%;
+  --primary:            276 100% 50%;
+  --primary-foreground: 0 0% 100%;
+  --ring:               276 100% 50%;
+  --accent:             276 100% 50%;
+  --accent-foreground:  0 0% 100%;
+  --popover:            0 0% 7%;
+  --popover-foreground: 0 0% 100%;
+  --secondary:          0 0% 10%;
+  --secondary-foreground: 0 0% 100%;
+  --destructive:        0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --radius: 0.5rem;
+}
+
+body {
+  background-color: #000000;
+  color: #ffffff;
+  font-family: var(--font-sans);
+}
