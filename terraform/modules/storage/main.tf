@@ -134,7 +134,7 @@ resource "aws_dynamodb_table" "document_audit_trail" {
 # DynamoDB: Feedback Logs Table
 # -----------------------------------------------------------------------------
 resource "aws_dynamodb_table" "feedback" {
-  name         = "${var.project_name}-feedback"
+  name         = "user-feedback-store"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "feedback_id"
   range_key    = "timestamp"
@@ -150,7 +150,7 @@ resource "aws_dynamodb_table" "feedback" {
   }
 
   tags = {
-    Name        = "${var.project_name}-feedback"
+    Name        = "user-feedback-store"
     Environment = var.environment
   }
 }

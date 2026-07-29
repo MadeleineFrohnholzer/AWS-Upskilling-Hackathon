@@ -48,7 +48,7 @@ resource "aws_iam_role_policy" "s3" {
 # ── API Gateway HTTP API ──────────────────────────────────────────────────────
 
 resource "aws_apigatewayv2_api" "upload" {
-  name          = "${local.function_name}-api"
+  name          = "document-upload-api"
   protocol_type = "HTTP"
 
   cors_configuration {

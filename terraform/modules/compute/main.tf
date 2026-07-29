@@ -6,7 +6,7 @@
 # ECR Repository
 # -----------------------------------------------------------------------------
 resource "aws_ecr_repository" "chat_frontend" {
-  name                 = "${var.project_name}-chat-frontend"
+  name                 = "chat-application-image-repo"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -14,7 +14,7 @@ resource "aws_ecr_repository" "chat_frontend" {
   }
 
   tags = {
-    Name        = "${var.project_name}-chat-frontend"
+    Name        = "chat-application-image-repo"
     Environment = var.environment
   }
 }
@@ -23,7 +23,7 @@ resource "aws_ecr_repository" "chat_frontend" {
 # ECS Cluster
 # -----------------------------------------------------------------------------
 resource "aws_ecs_cluster" "main" {
-  name = "${var.project_name}-cluster"
+  name = "chat-application-cluster"
 
   setting {
     name  = "containerInsights"
@@ -31,7 +31,7 @@ resource "aws_ecs_cluster" "main" {
   }
 
   tags = {
-    Name        = "${var.project_name}-cluster"
+    Name        = "chat-application-cluster"
     Environment = var.environment
   }
 }
@@ -40,7 +40,7 @@ resource "aws_ecs_cluster" "main" {
 # ECS Task Execution Role (ECR pull + CloudWatch Logs)
 # -----------------------------------------------------------------------------
 resource "aws_iam_role" "ecs_task_execution" {
-  name = "platform-${var.project_name}-ecs-task-execution"
+  name = "platform-ecs-task-execution"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -61,7 +61,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
 
 # ECS Task Role — grants the running containers permissions to call AWS APIs
 resource "aws_iam_role" "ecs_task_role" {
-  name = "platform-${var.project_name}-ecs-task-role"
+  name = "platform-ecs-task-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -110,7 +110,7 @@ locals {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = "/ecs/${var.project_name}-chat-frontend"
+        "awslogs-group"         = "/ecs/chat-application"
         "awslogs-region"        = data.aws_region.current.id
         "awslogs-stream-prefix" = "chat"
       }
@@ -132,7 +132,7 @@ locals {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = "/ecs/${var.project_name}-chat-frontend"
+        "awslogs-group"         = "/ecs/chat-application"
         "awslogs-region"        = data.aws_region.current.id
         "awslogs-stream-prefix" = "proxy"
       }
@@ -143,7 +143,7 @@ locals {
 }
 
 resource "aws_ecs_task_definition" "chat_frontend" {
-  family                   = "${var.project_name}-chat-frontend"
+  family                   = "chat-application-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = var.cpu
@@ -154,7 +154,7 @@ resource "aws_ecs_task_definition" "chat_frontend" {
   container_definitions = jsonencode(local.container_definitions)
 
   tags = {
-    Name        = "${var.project_name}-chat-frontend"
+    Name        = "chat-application-task"
     Environment = var.environment
   }
 }
@@ -163,7 +163,7 @@ resource "aws_ecs_task_definition" "chat_frontend" {
 # CloudWatch Log Groups
 # -----------------------------------------------------------------------------
 resource "aws_cloudwatch_log_group" "chat_frontend" {
-  name              = "/ecs/${var.project_name}-chat-frontend"
+  name              = "/ecs/chat-application"
   retention_in_days = 14
 }
 
@@ -173,7 +173,7 @@ resource "aws_cloudwatch_log_group" "chat_frontend" {
 
 # ALB 5xx error rate > 1% over 5 minutes (metric math: 5xx / total * 100)
 resource "aws_cloudwatch_metric_alarm" "alb_5xx_rate" {
-  alarm_name          = "${var.project_name}-alb-5xx-rate-high"
+  alarm_name          = "alb-5xx-rate-high"
   alarm_description   = "ALB target 5xx error rate exceeded ${var.alarm_5xx_threshold_pct}% over 5 minutes"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
@@ -213,7 +213,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx_rate" {
 
 # ALB target response time P95 > 20 seconds
 resource "aws_cloudwatch_metric_alarm" "alb_latency_p95" {
-  alarm_name          = "${var.project_name}-alb-latency-p95-high"
+  alarm_name          = "alb-latency-p95-high"
   alarm_description   = "ALB target response time P95 exceeded ${var.alarm_latency_p95_seconds}s over 5 minutes"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
@@ -232,7 +232,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_latency_p95" {
 
 # ECS service CPU utilisation > 80% — dimensions filled once ECS service is deployed
 resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
-  alarm_name          = "${var.project_name}-ecs-cpu-high"
+  alarm_name          = "ecs-cpu-high"
   alarm_description   = "ECS service CPU utilisation exceeded ${var.alarm_cpu_threshold_pct}%"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
@@ -254,7 +254,7 @@ resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
 # CloudWatch Dashboard
 # -----------------------------------------------------------------------------
 resource "aws_cloudwatch_dashboard" "main" {
-  dashboard_name = "${var.project_name}-app"
+  dashboard_name = "chat-application-dashboard"
 
   dashboard_body = jsonencode({
     widgets = [
