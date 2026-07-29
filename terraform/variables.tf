@@ -16,20 +16,46 @@ variable "region" {
   default     = "eu-central-1"
 }
 
+# -----------------------------------------------------------------------------
+# Networking
+# -----------------------------------------------------------------------------
+
+variable "vpc_cidr" {
+  description = "VPC CIDR block"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "public_subnet_cidrs" {
+  description = "CIDR blocks for public subnets"
+  type        = list(string)
+  default     = ["10.0.1.0/24", "10.0.2.0/24"]
+}
+
+variable "private_subnet_cidrs" {
+  description = "CIDR blocks for private subnets"
+  type        = list(string)
+  default     = ["10.0.10.0/24", "10.0.11.0/24"]
+}
+
+variable "availability_zones" {
+  description = "AZs for subnets"
+  type        = list(string)
+  default     = ["eu-central-1a", "eu-central-1b"]
+}
+
+variable "enable_nat_gateway" {
+  description = "Enable NAT Gateway for outbound internet from private subnets"
+  type        = bool
+  default     = false
+}
+
+# -----------------------------------------------------------------------------
+# Compute / App
+# -----------------------------------------------------------------------------
+
 variable "open_webui_image" {
   description = "Docker image URI for Open WebUI (pushed to ECR before applying)"
-  type        = string
-  default     = ""
-}
-
-variable "knowledge_base_id" {
-  description = "Bedrock Knowledge Base ID from Team 1. Leave empty until the KB is deployed."
-  type        = string
-  default     = ""
-}
-
-variable "knowledge_base_arn" {
-  description = "Bedrock Knowledge Base ARN from Team 1. Leave empty until the KB is deployed."
   type        = string
   default     = ""
 }
@@ -40,27 +66,10 @@ variable "proxy_image" {
   default     = ""
 }
 
-variable "bedrock_agent_id" {
-  description = "Bedrock Agent ID (from Issue37 output)"
-  type        = string
-  default     = ""
-}
-
-variable "bedrock_agent_alias_id" {
-  description = "Bedrock Agent alias ID (from Issue37 output)"
-  type        = string
-  default     = ""
-}
-
-variable "bedrock_kb_id" {
-  description = "Bedrock Knowledge Base ID from Team 1"
-  type        = string
-  default     = ""
-}
-
 # -----------------------------------------------------------------------------
-# Cognito / Entra ID SSO variables
+# Cognito / Entra ID SSO
 # -----------------------------------------------------------------------------
+
 variable "entra_tenant_id" {
   description = "Azure Entra ID (AAD) tenant ID"
   type        = string

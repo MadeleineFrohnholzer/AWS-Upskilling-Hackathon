@@ -18,91 +18,40 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Detect which team directories changed
-  # ─────────────────────────────────────────────────────────────────────────────
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    outputs:
-      shared: ${{ steps.filter.outputs.shared }}
-      team1: ${{ steps.filter.outputs.team1 }}
-      team2: ${{ steps.filter.outputs.team2 }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            shared:
-              - 'terraform/shared/**'
-              - 'terraform/modules/networking/**'
-            team1:
-              - 'terraform/team1/**'
-              - 'terraform/modules/storage/**'
-              - 'terraform/modules/presigned-url-lambda/**'
-              - 'terraform/modules/ingest-lambda/**'
-              - 'terraform/modules/bedrock-kb/**'
-              - 'terraform/modules/audit-lambda/**'
-            team2:
-              - 'terraform/team2/**'
-              - 'terraform/modules/compute/**'
-
-  # ─────────────────────────────────────────────────────────────────────────────
   # Plan (on PR)
   # ─────────────────────────────────────────────────────────────────────────────
   plan:
-    name: "Plan: ${{ matrix.stack }}"
+    name: "Plan"
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    needs: changes
-    strategy:
-      matrix:
-        include:
-          - stack: shared
-            dir: terraform/shared
-            changed: ${{ needs.changes.outputs.shared }}
-          - stack: team1
-            dir: terraform/team1
-            changed: ${{ needs.changes.outputs.team1 }}
-          - stack: team2
-            dir: terraform/team2
-            changed: ${{ needs.changes.outputs.team2 }}
-      fail-fast: false
 
     steps:
-      - if: matrix.changed == 'true'
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - if: matrix.changed == 'true'
-        uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~> 1.7"
 
-      - if: matrix.changed == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - if: matrix.changed == 'true'
-        name: Terraform Init
-        working-directory: ${{ matrix.dir }}
+      - name: Terraform Init
+        working-directory: terraform
         run: terraform init -input=false
 
-      - if: matrix.changed == 'true'
-        name: Terraform Format Check
-        working-directory: ${{ matrix.dir }}
+      - name: Terraform Format Check
+        working-directory: terraform
         run: terraform fmt -check -recursive -diff
 
-      - if: matrix.changed == 'true'
-        name: Terraform Validate
-        working-directory: ${{ matrix.dir }}
+      - name: Terraform Validate
+        working-directory: terraform
         run: terraform validate
 
-      - if: matrix.changed == 'true'
-        name: Terraform Plan
+      - name: Terraform Plan
         id: plan
-        working-directory: ${{ matrix.dir }}
+        working-directory: terraform
         run: terraform plan -input=false -no-color
         continue-on-error: true
         env:
@@ -111,12 +60,11 @@ jobs:
           TF_VAR_entra_client_secret: ${{ secrets.ENTRA_CLIENT_SECRET }}
           TF_VAR_cognito_callback_urls: '["${{ secrets.COGNITO_CALLBACK_URL }}"]'
 
-      - if: matrix.changed == 'true'
-        name: Post Plan to PR
+      - name: Post Plan to PR
         uses: actions/github-script@v7
         with:
           script: |
-            const output = `#### 📋 Terraform Plan — \`${{ matrix.stack }}\`
+            const output = `#### 📋 Terraform Plan
             \`\`\`
             ${{ steps.plan.outputs.stdout }}
             \`\`\`
@@ -128,18 +76,17 @@ jobs:
               body: output
             });
 
-      - if: matrix.changed == 'true' && steps.plan.outcome == 'failure'
+      - if: steps.plan.outcome == 'failure'
         name: Plan Status
         run: exit 1
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Apply (on merge to main) — ordered: shared → team1 → team2
+  # Apply (on merge to main)
   # ─────────────────────────────────────────────────────────────────────────────
-  apply-shared:
-    name: "Apply: shared"
+  apply:
+    name: "Apply"
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.shared == 'true'
-    needs: changes
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -150,47 +97,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Init & Apply
-        working-directory: terraform/shared
-        run: |
-          terraform init -input=false
-          terraform apply -input=false -auto-approve
-
-  apply-team1:
-    name: "Apply: team1"
-    runs-on: ubuntu-latest
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team1 == 'true' && (needs.apply-shared.result == 'success' || needs.apply-shared.result == 'skipped')
-    needs: [changes, apply-shared]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~> 1.7"
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Init & Apply
-        working-directory: terraform/team1
-        run: |
-          terraform init -input=false
-          terraform apply -input=false -auto-approve
-
-  apply-team2:
-    name: "Apply: team2"
-    runs-on: ubuntu-latest
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.team2 == 'true' && (needs.apply-shared.result == 'success' || needs.apply-shared.result == 'skipped')
-    needs: [changes, apply-shared]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~> 1.7"
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Init & Apply
-        working-directory: terraform/team2
+        working-directory: terraform
         run: |
           terraform init -input=false
           terraform apply -input=false -auto-approve
