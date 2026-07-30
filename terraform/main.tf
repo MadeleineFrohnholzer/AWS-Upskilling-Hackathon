@@ -421,7 +421,7 @@ resource "aws_ecs_task_definition" "chat_ui" {
       }
     }
     healthCheck = {
-      command     = ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      command     = ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval    = 30
       timeout     = 5
       retries     = 3
