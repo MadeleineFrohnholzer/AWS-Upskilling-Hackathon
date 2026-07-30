@@ -47,7 +47,6 @@ jobs:
           docker build -t chat-ui:${{ github.sha }} .
 
       - name: Push to ECR
-        if: github.event_name == 'push'
         working-directory: chat-ui
         run: |
           IMAGE_URI="${{ steps.ecr.outputs.repo_uri }}:${{ github.sha }}"
