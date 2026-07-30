@@ -4,7 +4,7 @@
 
 locals {
   agent_name = "bedrock-retrieval-agent"
-  region     = data.aws_region.current.name
+  region     = data.aws_region.current.region
   account_id = data.aws_caller_identity.current.account_id
 }
 
