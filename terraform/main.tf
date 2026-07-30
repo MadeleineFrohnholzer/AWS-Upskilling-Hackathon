@@ -270,6 +270,7 @@ resource "aws_iam_role_policy" "ecs_task" {
         Sid    = "BedrockAgentInvoke"
         Effect = "Allow"
         Action = [
+          "bedrock:InvokeAgent",
           "bedrock-agent-runtime:InvokeAgent",
           "bedrock-agent-runtime:Retrieve",
           "bedrock-agent-runtime:RetrieveAndGenerate",
