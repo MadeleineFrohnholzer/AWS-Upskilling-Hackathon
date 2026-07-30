@@ -41,7 +41,7 @@ resource "aws_iam_role_policy" "agent" {
         Sid      = "InvokeFoundationModel"
         Effect   = "Allow"
         Action   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
-        Resource = "arn:aws:bedrock:${local.region}::foundation-model/${var.foundation_model_id}"
+        Resource = "arn:aws:bedrock:*::foundation-model/${var.foundation_model_id}"
       },
       {
         Sid    = "RetrieveFromKnowledgeBase"
