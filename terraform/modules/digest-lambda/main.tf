@@ -39,8 +39,8 @@ resource "aws_iam_role_policy" "dynamodb_scan" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["dynamodb:Query"]
+      Effect = "Allow"
+      Action = ["dynamodb:Query"]
       Resource = [
         var.audit_table_arn,
         "${var.audit_table_arn}/index/*",
