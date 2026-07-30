@@ -54,9 +54,9 @@ variable "vpn_egress_cidrs" {
   description = "Prisma Access VPN egress public IP CIDRs. ALB only accepts inbound from these IPs."
   type        = list(string)
   default = [
-    "130.41.87.32/29",   # Germany Central
-    "130.41.82.24/29",   # Germany North
-    "137.83.241.50/31",  # Switzerland
+    "130.41.87.32/29",  # Germany Central
+    "130.41.82.24/29",  # Germany North
+    "137.83.241.50/31", # Switzerland
   ]
 }
 
