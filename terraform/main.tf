@@ -505,7 +505,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_latency_p95" {
   namespace   = "AWS/ApplicationELB"
   metric_name = "TargetResponseTime"
   period      = 60
-  statistic   = "p95"
+  extended_statistic = "p95"
   dimensions  = { LoadBalancer = data.aws_lb.shared.arn_suffix }
 }
 
