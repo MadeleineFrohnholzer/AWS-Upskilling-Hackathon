@@ -4,8 +4,8 @@ output "agent_id" {
 }
 
 output "agent_alias_id" {
-  description = "Bedrock Agent Alias ID — set as BEDROCK_AGENT_ALIAS_ID env var on the proxy container"
-  value       = aws_bedrockagent_agent_alias.live.agent_alias_id
+  description = "Bedrock Agent Alias ID — TSTALIASID routes to the DRAFT version (live config, no versioning)"
+  value       = "TSTALIASID"
 }
 
 output "agent_arn" {

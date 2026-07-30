@@ -73,13 +73,3 @@ resource "aws_bedrockagent_agent_knowledge_base_association" "main" {
   knowledge_base_state = "ENABLED"
 }
 
-resource "aws_bedrockagent_agent_alias" "live" {
-  agent_id         = aws_bedrockagent_agent.main.id
-  agent_alias_name = "live"
-
-  routing_configuration {
-    agent_version = aws_bedrockagent_agent.main.agent_version
-  }
-
-  depends_on = [aws_bedrockagent_agent.main]
-}
