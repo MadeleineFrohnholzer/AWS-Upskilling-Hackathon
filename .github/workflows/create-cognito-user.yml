@@ -1,0 +1,37 @@
+name: Create Cognito User
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "User email address"
+        required: true
+      temporary_password:
+        description: "Temporary password"
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+
+jobs:
+  create-user:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create Cognito User
+        run: |
+          aws cognito-idp admin-create-user \
+            --user-pool-id eu-central-1_Vf130vVge \
+            --username "${{ github.event.inputs.email }}" \
+            --user-attributes Name=email,Value="${{ github.event.inputs.email }}" Name=email_verified,Value=true \
+            --temporary-password "${{ github.event.inputs.temporary_password }}" \
+            --region eu-central-1
+          echo "User created successfully"
