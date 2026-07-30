@@ -82,7 +82,11 @@ resource "aws_s3_bucket_public_access_block" "processed" {
 resource "aws_dynamodb_table" "sessions" {
   name         = "chat-session-store"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "session_id"
+
+  key_schema {
+    attribute_name = "session_id"
+    key_type       = "HASH"
+  }
 
   attribute {
     name = "session_id"
@@ -120,7 +124,11 @@ resource "aws_s3_bucket_cors_configuration" "landing" {
 resource "aws_dynamodb_table" "document_audit_trail" {
   name         = "document-audit-trail"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "filename"
+
+  key_schema {
+    attribute_name = "filename"
+    key_type       = "HASH"
+  }
 
   attribute {
     name = "filename"
@@ -164,8 +172,16 @@ resource "aws_dynamodb_table" "document_audit_trail" {
 resource "aws_dynamodb_table" "chat_history" {
   name         = "${var.project_name}-chat-history"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "sessionId"
-  range_key    = "timestamp"
+
+  key_schema {
+    attribute_name = "sessionId"
+    key_type       = "HASH"
+  }
+
+  key_schema {
+    attribute_name = "timestamp"
+    key_type       = "RANGE"
+  }
 
   attribute {
     name = "sessionId"
@@ -184,9 +200,17 @@ resource "aws_dynamodb_table" "chat_history" {
 
   global_secondary_index {
     name            = "userEmail-index"
-    hash_key        = "userEmail"
-    range_key       = "timestamp"
     projection_type = "ALL"
+
+    key_schema {
+      attribute_name = "userEmail"
+      key_type       = "HASH"
+    }
+
+    key_schema {
+      attribute_name = "timestamp"
+      key_type       = "RANGE"
+    }
   }
 
   ttl {
@@ -205,8 +229,16 @@ resource "aws_dynamodb_table" "chat_history" {
 resource "aws_dynamodb_table" "feedback" {
   name         = "user-feedback-store"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "feedback_id"
-  range_key    = "timestamp"
+
+  key_schema {
+    attribute_name = "feedback_id"
+    key_type       = "HASH"
+  }
+
+  key_schema {
+    attribute_name = "timestamp"
+    key_type       = "RANGE"
+  }
 
   attribute {
     name = "feedback_id"
