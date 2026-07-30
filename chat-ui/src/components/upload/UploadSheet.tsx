@@ -24,8 +24,9 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-const INDUSTRIES = ['Financial Services', 'Healthcare', 'Technology', 'Energy', 'Retail', 'Other'];
-const DOC_TYPES = ['Contract', 'Report', 'Policy', 'Proposal', 'Invoice', 'Other'];
+const INDUSTRIES = ['CMT', 'FSI', 'H&PS', 'PRD - Automotive', 'PRD - Consumer Goods', 'PRD - Industrial', 'PRD - Life Science', 'RES', 'Other'];
+const DOC_TYPES = ['Architecture', 'Assessment / Diagnostic', 'Case Study', 'Discussion Deck', 'Executive Summary', 'Point of View / Whitepaper', 'PoC', 'Proposal', 'RFP', 'Roadmap', 'Runbook', 'Statement of Work (SOW)', 'Other'];
+const USE_CASES = ['Application Modernization', 'Cloud Migration', 'Cybersecurity', 'Data & Analytics Platform', 'DB Migration', 'DevOps / Platform Engineering', 'Digital Transformation', 'Disaster Recovery / Resilience', 'ERP Implementation', 'GenAI / AI Agent', 'Infrastructure Optimization / FinOps', 'Managed Services', 'Other'];
 
 interface UploadSheetProps {
   open: boolean;
@@ -73,9 +74,12 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fileName: file.name,
+          filename: file.name,
           fileType: file.type,
-          ...data,
+          Industry: data.industry,
+          DocumentType: data.documentType,
+          ...(data.useCase && { UseCase: data.useCase }),
+          ...(data.client && { Client: data.client }),
         }),
       });
       const { url } = await res.json();
@@ -186,11 +190,13 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
 
               <div>
                 <label className="text-muted-foreground text-sm mb-1 block">Use Case</label>
-                <Input
+                <select
                   {...register('useCase')}
-                  placeholder="Optional..."
-                  className="bg-card border-border text-foreground placeholder:text-muted-foreground"
-                />
+                  className="w-full bg-card border border-border rounded-md px-3 py-2 text-foreground text-sm focus:border-[#A100FF] outline-none"
+                >
+                  <option value="">Select use case...</option>
+                  {USE_CASES.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
               </div>
 
               <div>
