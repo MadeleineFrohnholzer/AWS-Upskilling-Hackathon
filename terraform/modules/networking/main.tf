@@ -299,6 +299,20 @@ resource "aws_vpc_endpoint" "logs" {
   }
 }
 
+# Lambda (for ECS tasks to invoke Lambda functions without NAT)
+resource "aws_vpc_endpoint" "lambda" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.region}.lambda"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "lambda-endpoint"
+  }
+}
+
 # STS (for IAM role assumption from Lambda/ECS)
 resource "aws_vpc_endpoint" "sts" {
   vpc_id              = aws_vpc.main.id
