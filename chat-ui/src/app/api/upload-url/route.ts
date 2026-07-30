@@ -25,11 +25,25 @@ export async function POST(req: NextRequest) {
     });
 
     const response = await client.send(command);
-    const payload = JSON.parse(new TextDecoder().decode(response.Payload));
-    const parsed = typeof payload.body === 'string' ? JSON.parse(payload.body) : payload;
+    const rawPayload = new TextDecoder().decode(response.Payload);
+    console.log('Lambda raw response:', rawPayload, 'FunctionError:', response.FunctionError);
 
-    if (parsed.errors) {
-      return NextResponse.json({ error: parsed.errors.join(', ') }, { status: 400 });
+    if (response.FunctionError) {
+      console.error('Lambda function error:', rawPayload);
+      return NextResponse.json({ error: 'Upload service error' }, { status: 502 });
+    }
+
+    const payload = JSON.parse(rawPayload);
+    const parsed = typeof payload.body === 'string' ? JSON.parse(payload.body) : payload;
+    console.log('Lambda parsed response:', parsed);
+
+    if (parsed.statusCode && parsed.statusCode !== 200) {
+      return NextResponse.json({ error: parsed.errors?.join(', ') ?? 'Upload service error' }, { status: parsed.statusCode });
+    }
+
+    if (!parsed.upload_url) {
+      console.error('Missing upload_url in Lambda response:', parsed);
+      return NextResponse.json({ error: 'No upload URL returned' }, { status: 502 });
     }
 
     return NextResponse.json({ url: parsed.upload_url });
