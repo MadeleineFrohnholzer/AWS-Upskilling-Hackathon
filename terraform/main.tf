@@ -33,15 +33,11 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  vpc_id                      = module.networking.vpc_id
-  private_subnet_ids          = module.networking.private_subnet_ids
-  lambda_security_group_id    = module.networking.lambda_security_group_id
-  alb_arn                     = module.networking.alb_arn
-  alb_listener_arn            = module.networking.alb_listener_arn
-  ecs_tasks_security_group_id = module.networking.ecs_tasks_security_group_id
-  account_id                  = data.aws_caller_identity.current.account_id
-  region                      = data.aws_region.current.region
-  container_image             = var.chat_ui_image != "" ? var.chat_ui_image : "${module.compute.ecr_repository_url}:latest"
+  private_subnet_ids       = module.networking.private_subnet_ids
+  lambda_security_group_id = module.networking.lambda_security_group_id
+  alb_arn                  = module.networking.alb_arn
+  account_id               = data.aws_caller_identity.current.account_id
+  region                   = data.aws_region.current.region
 }
 
 # =============================================================================
@@ -225,13 +221,13 @@ resource "aws_cognito_user_pool_client" "chat_app" {
 
   generate_secret = true
 
-  allowed_oauth_flows_user_pool_client = length(compact(var.cognito_callback_urls)) > 0
-  allowed_oauth_flows                  = length(compact(var.cognito_callback_urls)) > 0 ? ["code"] : []
-  allowed_oauth_scopes                 = length(compact(var.cognito_callback_urls)) > 0 ? ["openid", "email", "profile"] : []
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_scopes                 = ["openid", "email", "profile"]
   supported_identity_providers         = var.entra_tenant_id != "" ? ["EntraID"] : ["COGNITO"]
 
-  callback_urls = compact(var.cognito_callback_urls)
-  logout_urls   = compact(var.cognito_logout_urls)
+  callback_urls = ["http://${module.networking.alb_dns_name}/oauth2/idpresponse"]
+  logout_urls   = ["http://${module.networking.alb_dns_name}/"]
 
   access_token_validity  = 1
   id_token_validity      = 1
@@ -337,7 +333,7 @@ resource "aws_lb_target_group" "chat_frontend" {
   name        = "chat-application-tg"
   port        = 3000
   protocol    = "HTTP"
-  vpc_id      = local.vpc_id
+  vpc_id      = module.networking.vpc_id
   target_type = "ip"
 
   health_check {
@@ -353,7 +349,7 @@ resource "aws_lb_target_group" "chat_frontend" {
 }
 
 resource "aws_lb_listener_rule" "chat_frontend" {
-  count        = length(compact(var.cognito_callback_urls)) > 0 && var.alb_certificate_arn != "" ? 1 : 0
+  count        = var.alb_certificate_arn != "" ? 1 : 0
   listener_arn = aws_lb_listener.https[0].arn
   priority     = 100
 
@@ -384,8 +380,8 @@ resource "aws_lb_listener_rule" "chat_frontend" {
 }
 
 resource "aws_lb_listener_rule" "chat_frontend_noauth" {
-  count        = length(compact(var.cognito_callback_urls)) > 0 ? 0 : 1
-  listener_arn = local.alb_listener_arn
+  count        = var.alb_certificate_arn != "" ? 0 : 1
+  listener_arn = module.networking.alb_listener_arn
   priority     = 100
 
   action {
@@ -415,7 +411,7 @@ resource "aws_ecs_task_definition" "chat_ui" {
 
   container_definitions = jsonencode([{
     name         = "chat-frontend"
-    image        = local.container_image
+    image        = var.chat_ui_image != "" ? var.chat_ui_image : "${module.compute.ecr_repository_url}:latest"
     portMappings = [{ containerPort = 3000, protocol = "tcp" }]
     environment = [
       { name = "AWS_REGION", value = local.region },
@@ -454,7 +450,7 @@ resource "aws_ecs_service" "chat_ui" {
 
   network_configuration {
     subnets          = local.private_subnet_ids
-    security_groups  = [local.ecs_tasks_security_group_id]
+    security_groups  = [module.networking.ecs_tasks_security_group_id]
     assign_public_ip = false
   }
 
