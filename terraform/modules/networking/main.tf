@@ -431,8 +431,8 @@ resource "aws_security_group" "ecs_tasks" {
   description = "ECS Fargate tasks - accepts traffic from ALB"
 
   ingress {
-    from_port       = 8080
-    to_port         = 8080
+    from_port       = 3000
+    to_port         = 3000
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
     description     = "App port from ALB"
@@ -443,7 +443,23 @@ resource "aws_security_group" "ecs_tasks" {
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
-    description = "HTTPS to VPC endpoints"
+    description = "HTTPS to VPC interface endpoints (ECR API, ECR DKR, CloudWatch, STS, Bedrock)"
+  }
+
+  egress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_prefix_list.dynamodb.id]
+    description     = "HTTPS to DynamoDB via gateway endpoint (chat history)"
+  }
+
+  egress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_prefix_list.s3.id]
+    description     = "HTTPS to S3 via gateway endpoint"
   }
 
   tags = {
