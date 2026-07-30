@@ -41,7 +41,7 @@ resource "aws_iam_role_policy" "agent" {
         Sid      = "InvokeFoundationModel"
         Effect   = "Allow"
         Action   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
-        Resource = "arn:aws:bedrock:${local.region}::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0"
+        Resource = "arn:aws:bedrock:${local.region}::foundation-model/${var.foundation_model_id}"
       },
       {
         Sid    = "RetrieveFromKnowledgeBase"
@@ -59,7 +59,7 @@ resource "aws_iam_role_policy" "agent" {
 resource "aws_bedrockagent_agent" "main" {
   agent_name                  = local.agent_name
   agent_resource_role_arn     = aws_iam_role.agent.arn
-  foundation_model            = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+  foundation_model            = var.foundation_model_id
   instruction                 = var.agent_instruction
   idle_session_ttl_in_seconds = 600
   prepare_agent               = true
