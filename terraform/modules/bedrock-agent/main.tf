@@ -38,9 +38,9 @@ resource "aws_iam_role_policy" "agent" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "InvokeFoundationModel"
-        Effect = "Allow"
-        Action = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+        Sid      = "InvokeFoundationModel"
+        Effect   = "Allow"
+        Action   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
         Resource = "arn:aws:bedrock:${local.region}::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0"
       },
       {
