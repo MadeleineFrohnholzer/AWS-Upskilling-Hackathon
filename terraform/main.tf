@@ -502,11 +502,11 @@ resource "aws_cloudwatch_metric_alarm" "alb_latency_p95" {
   alarm_description   = "ALB P95 response time exceeded 20s for 2 consecutive minutes"
   treat_missing_data  = "notBreaching"
 
-  namespace   = "AWS/ApplicationELB"
-  metric_name = "TargetResponseTime"
-  period      = 60
+  namespace          = "AWS/ApplicationELB"
+  metric_name        = "TargetResponseTime"
+  period             = 60
   extended_statistic = "p95"
-  dimensions  = { LoadBalancer = data.aws_lb.shared.arn_suffix }
+  dimensions         = { LoadBalancer = data.aws_lb.shared.arn_suffix }
 }
 
 resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
