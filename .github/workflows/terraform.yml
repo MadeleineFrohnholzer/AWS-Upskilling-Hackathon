@@ -97,6 +97,20 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Import ALB certificate into ACM
+        id: acm
+        run: |
+          echo "${{ secrets.ALB_CERT_PEM }}" > cert.pem
+          echo "${{ secrets.ALB_KEY_PEM }}" > key.pem
+          ARN=$(aws acm import-certificate \
+            --certificate fileb://cert.pem \
+            --private-key fileb://key.pem \
+            --region eu-central-1 \
+            --query CertificateArn --output text)
+          echo "arn=$ARN" >> $GITHUB_OUTPUT
+          rm -f cert.pem key.pem
+
       - name: Init & Apply
         working-directory: terraform
         run: |
@@ -107,4 +121,4 @@ jobs:
           TF_VAR_entra_client_id: ${{ secrets.TF_VAR_ENTRA_CLIENT_ID }}
           TF_VAR_entra_client_secret: ${{ secrets.TF_VAR_ENTRA_CLIENT_SECRET }}
           TF_VAR_cognito_callback_urls: ${{ secrets.TF_VAR_COGNITO_CALLBACK_URL }}
-          TF_VAR_alb_certificate_arn: ${{ secrets.TF_VAR_ALB_CERTIFICATE_ARN }}
+          TF_VAR_alb_certificate_arn: ${{ steps.acm.outputs.arn }}
