@@ -24,9 +24,9 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-const INDUSTRIES = ['FSI', 'PRD - Automotive', 'PRD - Life Science', 'PRD - Industrial', 'PRD - Consumer Goods', 'CMT', 'H&PS', 'RES', 'Other'];
-const DOC_TYPES = ['Architecture', 'Discussion Deck', 'RFP', 'Proposal', 'PoC', 'Case Study', 'Statement of Work (SOW)', 'Assessment / Diagnostic', 'Roadmap', 'Runbook', 'Executive Summary', 'Point of View / Whitepaper', 'Other'];
-const USE_CASES = ['DB Migration', 'Cloud Migration', 'Data & Analytics Platform', 'GenAI / AI Agent', 'Application Modernization', 'Cybersecurity', 'ERP Implementation', 'Infrastructure Optimization / FinOps', 'DevOps / Platform Engineering', 'Digital Transformation', 'Managed Services', 'Disaster Recovery / Resilience', 'Other'];
+const INDUSTRIES = ['CMT', 'FSI', 'H&PS', 'PRD - Automotive', 'PRD - Consumer Goods', 'PRD - Industrial', 'PRD - Life Science', 'RES', 'Other'];
+const DOC_TYPES = ['Architecture', 'Assessment / Diagnostic', 'Case Study', 'Discussion Deck', 'Executive Summary', 'Point of View / Whitepaper', 'PoC', 'Proposal', 'RFP', 'Roadmap', 'Runbook', 'Statement of Work (SOW)', 'Other'];
+const USE_CASES = ['Application Modernization', 'Cloud Migration', 'Cybersecurity', 'Data & Analytics Platform', 'DB Migration', 'DevOps / Platform Engineering', 'Digital Transformation', 'Disaster Recovery / Resilience', 'ERP Implementation', 'GenAI / AI Agent', 'Infrastructure Optimization / FinOps', 'Managed Services', 'Other'];
 
 interface UploadSheetProps {
   open: boolean;
