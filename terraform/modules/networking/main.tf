@@ -338,6 +338,14 @@ resource "aws_security_group" "alb" {
   }
 
   ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["212.23.247.225/32"]
+    description = "HTTPS from developer IP"
+  }
+
+  ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
