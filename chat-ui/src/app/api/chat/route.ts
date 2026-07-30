@@ -7,7 +7,6 @@ export async function POST(req: NextRequest) {
   const { sessionId, message } = await req.json();
 
   if (!process.env.BEDROCK_AGENT_ID) {
-    // Mock response for local dev
     return NextResponse.json({
       message: `Mock response: ${message}`,
       citations: [] as Citation[],
@@ -29,6 +28,7 @@ export async function POST(req: NextRequest) {
       agentAliasId: process.env.BEDROCK_AGENT_ALIAS_ID!,
       sessionId,
       inputText: message,
+      enableTrace: true,
     });
 
     const response = await client.send(command);
@@ -41,7 +41,9 @@ export async function POST(req: NextRequest) {
           responseText += new TextDecoder().decode(event.chunk.bytes);
         }
         if (event.trace?.trace?.orchestrationTrace?.observation?.knowledgeBaseLookupOutput) {
-          const refs = event.trace.trace.orchestrationTrace.observation.knowledgeBaseLookupOutput.retrievedReferences ?? [];
+          const refs =
+            event.trace.trace.orchestrationTrace.observation.knowledgeBaseLookupOutput
+              .retrievedReferences ?? [];
           for (const ref of refs) {
             citations.push({
               source: ref.location?.s3Location?.uri ?? 'unknown',
@@ -52,37 +54,41 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const dynamo = getDynamoClient();
-    const now = new Date().toISOString();
-
-    await dynamo.send(new PutCommand({
-      TableName: process.env.DYNAMODB_TABLE_NAME!,
-      Item: {
-        sessionId,
-        timestamp: now,
-        role: 'user',
-        message,
-        citations: [],
-        userEmail,
-        sessionTitle: message.slice(0, 80),
-      },
-    }));
-
-    await dynamo.send(new PutCommand({
-      TableName: process.env.DYNAMODB_TABLE_NAME!,
-      Item: {
-        sessionId,
-        timestamp: new Date(Date.now() + 1).toISOString(),
-        role: 'assistant',
-        message: responseText,
-        citations,
-        userEmail,
-      },
-    }));
+    // Persist history — non-fatal: don't let DynamoDB errors break the chat response
+    if (process.env.DYNAMODB_TABLE_NAME) {
+      const dynamo = getDynamoClient();
+      const now = new Date().toISOString();
+      Promise.all([
+        dynamo.send(new PutCommand({
+          TableName: process.env.DYNAMODB_TABLE_NAME,
+          Item: {
+            sessionId,
+            timestamp: now,
+            role: 'user',
+            message,
+            citations: [],
+            userEmail,
+            sessionTitle: message.slice(0, 80),
+          },
+        })),
+        dynamo.send(new PutCommand({
+          TableName: process.env.DYNAMODB_TABLE_NAME,
+          Item: {
+            sessionId,
+            timestamp: new Date(Date.now() + 1).toISOString(),
+            role: 'assistant',
+            message: responseText,
+            citations,
+            userEmail,
+          },
+        })),
+      ]).catch((err) => console.error('DynamoDB write error:', err));
+    }
 
     return NextResponse.json({ message: responseText, citations });
   } catch (error) {
-    console.error('Chat error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error('Chat error:', detail, error);
+    return NextResponse.json({ error: detail }, { status: 500 });
   }
 }
