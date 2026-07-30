@@ -184,9 +184,17 @@ resource "aws_dynamodb_table" "chat_history" {
 
   global_secondary_index {
     name            = "userEmail-index"
-    hash_key        = "userEmail"
-    range_key       = "timestamp"
     projection_type = "ALL"
+
+    key_schema {
+      attribute_name = "userEmail"
+      key_type       = "HASH"
+    }
+
+    key_schema {
+      attribute_name = "timestamp"
+      key_type       = "RANGE"
+    }
   }
 
   ttl {

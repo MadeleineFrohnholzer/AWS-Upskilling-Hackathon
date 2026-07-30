@@ -93,17 +93,6 @@ variable "entra_client_secret" {
   default     = ""
 }
 
-variable "cognito_callback_urls" {
-  description = "Allowed callback URLs for the Cognito app client (ALB HTTPS endpoint)"
-  type        = list(string)
-  default     = []
-}
-
-variable "cognito_logout_urls" {
-  description = "Allowed logout URLs for the Cognito app client"
-  type        = list(string)
-  default     = []
-}
 
 variable "alb_certificate_arn" {
   description = "ACM certificate ARN for the ALB HTTPS listener"
