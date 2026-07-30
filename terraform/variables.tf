@@ -60,12 +60,6 @@ variable "chat_ui_image" {
   default     = ""
 }
 
-variable "proxy_image" {
-  description = "ECR image URI for the bedrock-proxy sidecar. Set after pushing the image."
-  type        = string
-  default     = ""
-}
-
 # -----------------------------------------------------------------------------
 # Cognito / Entra ID SSO
 # -----------------------------------------------------------------------------

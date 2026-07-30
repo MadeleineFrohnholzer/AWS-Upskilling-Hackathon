@@ -148,16 +148,8 @@ module "bedrock_proxy" {
 module "compute" {
   source = "./modules/compute"
 
-  project_name           = var.project_name
-  environment            = var.environment
-  vpc_id                 = local.vpc_id
-  private_subnet_ids     = local.private_subnet_ids
-  alb_arn                = local.alb_arn
-  container_image        = var.chat_ui_image
-  proxy_image            = var.proxy_image
-  bedrock_agent_id       = module.bedrock_agent.agent_id
-  bedrock_agent_alias_id = module.bedrock_agent.agent_alias_id
-  ecs_service_name       = "chat-application-service"
+  project_name = var.project_name
+  environment  = var.environment
 }
 
 # =============================================================================
@@ -240,33 +232,8 @@ resource "aws_cognito_user_pool_client" "chat_app" {
 }
 
 # =============================================================================
-# ECS / SSM / IAM / CloudWatch
+# IAM — ECS Task Role
 # =============================================================================
-
-resource "aws_ssm_parameter" "webui_secret_key" {
-  name  = "/chat-application/secret-key"
-  type  = "SecureString"
-  value = "REPLACE_ME_AFTER_FIRST_DEPLOY_MIN_32_CHARS_LONG"
-
-  lifecycle {
-    ignore_changes = [value]
-  }
-}
-
-resource "aws_iam_role_policy" "ecs_task_execution_ssm" {
-  name = "ssm-secret-read"
-  role = module.compute.ecs_task_execution_role_name
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "SSMSecretRead"
-      Effect   = "Allow"
-      Action   = ["ssm:GetParameter", "ssm:GetParameters"]
-      Resource = aws_ssm_parameter.webui_secret_key.arn
-    }]
-  })
-}
 
 resource "aws_iam_role" "ecs_task" {
   name = "platform-chat-application-task"
@@ -311,29 +278,18 @@ resource "aws_iam_role_policy" "ecs_task" {
           "dynamodb:Query",
         ]
         Resource = [
-          data.terraform_remote_state.team1.outputs.chat_history_table_arn,
-          "${data.terraform_remote_state.team1.outputs.chat_history_table_arn}/index/*",
+          module.storage.chat_history_table_arn,
+          "${module.storage.chat_history_table_arn}/index/*",
         ]
       },
       {
         Sid      = "LambdaPresignedUrl"
         Effect   = "Allow"
         Action   = ["lambda:InvokeFunction"]
-        Resource = [data.terraform_remote_state.team1.outputs.presigned_url_lambda_arn]
+        Resource = [module.presigned_url_lambda.lambda_function_arn]
       },
-      {
-        Sid      = "SSMRead"
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter"]
-        Resource = aws_ssm_parameter.webui_secret_key.arn
-      }
     ]
   })
-}
-
-resource "aws_cloudwatch_log_group" "open_webui" {
-  name              = "/ecs/open-webui"
-  retention_in_days = 14
 }
 
 # =============================================================================
@@ -409,8 +365,8 @@ resource "aws_lb_listener_rule" "chat_frontend_noauth" {
 # ECS Task Definition + Service + Autoscaling
 # =============================================================================
 
-resource "aws_ecs_task_definition" "open_webui" {
-  family                   = "open-webui-task"
+resource "aws_ecs_task_definition" "chat_ui" {
+  family                   = "chat-ui-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "1024"
@@ -436,7 +392,7 @@ resource "aws_ecs_task_definition" "open_webui" {
       options = {
         "awslogs-group"         = module.compute.chat_frontend_log_group_name
         "awslogs-region"        = local.region
-        "awslogs-stream-prefix" = "chat-frontend"
+        "awslogs-stream-prefix" = "chat-ui"
       }
     }
     healthCheck = {
@@ -449,10 +405,10 @@ resource "aws_ecs_task_definition" "open_webui" {
   }])
 }
 
-resource "aws_ecs_service" "open_webui" {
-  name                 = "chat-application-service"
+resource "aws_ecs_service" "chat_ui" {
+  name                 = "chat-ui-service"
   cluster              = module.compute.ecs_cluster_arn
-  task_definition      = aws_ecs_task_definition.open_webui.arn
+  task_definition      = aws_ecs_task_definition.chat_ui.arn
   desired_count        = 1
   launch_type          = "FARGATE"
   force_new_deployment = true
@@ -470,20 +426,20 @@ resource "aws_ecs_service" "open_webui" {
   }
 }
 
-resource "aws_appautoscaling_target" "open_webui" {
+resource "aws_appautoscaling_target" "chat_ui" {
   max_capacity       = 4
   min_capacity       = 1
-  resource_id        = "service/${module.compute.ecs_cluster_name}/${aws_ecs_service.open_webui.name}"
+  resource_id        = "service/${module.compute.ecs_cluster_name}/${aws_ecs_service.chat_ui.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
 
-resource "aws_appautoscaling_policy" "open_webui_cpu" {
-  name               = "chat-application-cpu-scaling"
+resource "aws_appautoscaling_policy" "chat_ui_cpu" {
+  name               = "chat-ui-cpu-scaling"
   policy_type        = "TargetTrackingScaling"
-  resource_id        = aws_appautoscaling_target.open_webui.resource_id
-  scalable_dimension = aws_appautoscaling_target.open_webui.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.open_webui.service_namespace
+  resource_id        = aws_appautoscaling_target.chat_ui.resource_id
+  scalable_dimension = aws_appautoscaling_target.chat_ui.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.chat_ui.service_namespace
 
   target_tracking_scaling_policy_configuration {
     predefined_metric_specification {
@@ -567,7 +523,7 @@ resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
   statistic   = "Average"
   dimensions = {
     ClusterName = module.compute.ecs_cluster_name
-    ServiceName = aws_ecs_service.open_webui.name
+    ServiceName = aws_ecs_service.chat_ui.name
   }
 }
 
@@ -644,7 +600,7 @@ resource "aws_cloudwatch_dashboard" "main" {
             "AWS/ECS",
             "CPUUtilization",
             "ClusterName", module.compute.ecs_cluster_name,
-            "ServiceName", aws_ecs_service.open_webui.name,
+            "ServiceName", aws_ecs_service.chat_ui.name,
             { stat = "Average", period = 60, color = "#9467bd" }
           ]]
         }
