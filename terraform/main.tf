@@ -427,8 +427,8 @@ resource "aws_ecs_task_definition" "open_webui" {
       { name = "BEDROCK_AGENT_ID", value = module.bedrock_agent.agent_id },
       { name = "BEDROCK_AGENT_ALIAS_ID", value = module.bedrock_agent.agent_alias_id },
       { name = "KNOWLEDGE_BASE_ID", value = module.bedrock_kb.knowledge_base_id },
-      { name = "DYNAMODB_TABLE", value = module.storage.chat_history_table_name },
-      { name = "PRESIGNED_URL_LAMBDA_NAME", value = module.presigned_url_lambda.lambda_function_name },
+      { name = "DYNAMODB_TABLE_NAME", value = module.storage.chat_history_table_name },
+      { name = "UPLOAD_LAMBDA_NAME", value = module.presigned_url_lambda.lambda_function_name },
       { name = "NEXT_PUBLIC_APP_NAME", value = "Knowledge Assistant" },
     ]
     logConfiguration = {

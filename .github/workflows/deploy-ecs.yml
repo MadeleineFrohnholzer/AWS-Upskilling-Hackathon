@@ -1,0 +1,47 @@
+name: Deploy to ECS
+
+on:
+  workflow_run:
+    workflows: ["Docker Build & Push"]
+    branches: [main]
+    types: [completed]
+
+# Prevent two deployments running at the same time; queue rather than cancel.
+concurrency:
+  group: ecs-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: eu-central-1
+  ECS_CLUSTER: chat-application-cluster
+  ECS_SERVICE: chat-application-service
+
+jobs:
+  deploy:
+    name: Force new ECS deployment
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Force new ECS deployment
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --force-new-deployment \
+            --no-cli-pager
+
+      - name: Wait for service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }}

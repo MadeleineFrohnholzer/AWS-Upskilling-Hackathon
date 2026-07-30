@@ -36,9 +36,9 @@ jobs:
         id: ecr
         run: |
           REPO_URI=$(aws ecr describe-repositories \
-            --repository-names "knowledge-base-chat-frontend" \
+            --repository-names "chat-application-image-repo" \
             --query "repositories[0].repositoryUri" \
-            --output text 2>/dev/null || echo "")
+            --output text)
           echo "repo_uri=$REPO_URI" >> "$GITHUB_OUTPUT"
 
       - name: Build Docker image
@@ -47,7 +47,7 @@ jobs:
           docker build -t chat-ui:${{ github.sha }} .
 
       - name: Push to ECR
-        if: github.event_name == 'push' && steps.ecr.outputs.repo_uri != ''
+        if: github.event_name == 'push'
         working-directory: chat-ui
         run: |
           IMAGE_URI="${{ steps.ecr.outputs.repo_uri }}:${{ github.sha }}"
