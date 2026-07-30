@@ -1,14 +1,21 @@
-name: Create Cognito User
+name: Manage Cognito Users
 
 on:
   workflow_dispatch:
     inputs:
+      action:
+        description: "Action to perform"
+        required: true
+        type: choice
+        options:
+          - list-users
+          - create-user
       email:
-        description: "User email address"
-        required: true
+        description: "User email (required for create-user)"
+        required: false
       temporary_password:
-        description: "Temporary password"
-        required: true
+        description: "Temporary password (required for create-user)"
+        required: false
 
 permissions:
   id-token: write
@@ -18,7 +25,7 @@ env:
   AWS_REGION: eu-central-1
 
 jobs:
-  create-user:
+  manage-user:
     runs-on: ubuntu-latest
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
@@ -26,7 +33,17 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Create Cognito User
+      - name: List Users
+        if: github.event.inputs.action == 'list-users'
+        run: |
+          aws cognito-idp list-users \
+            --user-pool-id eu-central-1_Vf130vVge \
+            --region eu-central-1 \
+            --query "Users[*].{Username:Username,Status:UserStatus,Email:Attributes[?Name=='email'].Value|[0]}" \
+            --output table
+
+      - name: Create User
+        if: github.event.inputs.action == 'create-user'
         run: |
           aws cognito-idp admin-create-user \
             --user-pool-id eu-central-1_Vf130vVge \
@@ -34,4 +51,4 @@ jobs:
             --user-attributes Name=email,Value="${{ github.event.inputs.email }}" Name=email_verified,Value=true \
             --temporary-password "${{ github.event.inputs.temporary_password }}" \
             --region eu-central-1
-          echo "User created successfully"
+          echo "User ${{ github.event.inputs.email }} created successfully"
