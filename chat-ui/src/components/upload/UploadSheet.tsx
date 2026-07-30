@@ -74,12 +74,9 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          filename: file.name,
+          fileName: file.name,
           fileType: file.type,
-          Industry: data.industry,
-          DocumentType: data.documentType,
-          ...(data.useCase && { UseCase: data.useCase }),
-          ...(data.client && { Client: data.client }),
+          ...data,
         }),
       });
       const { url } = await res.json();
