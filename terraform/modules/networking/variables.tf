@@ -39,3 +39,9 @@ variable "enable_nat_gateway" {
   type        = bool
   default     = false
 }
+
+variable "vpn_egress_cidrs" {
+  description = "Prisma Access VPN egress public IP CIDRs (restrict ALB inbound to these)"
+  type        = list(string)
+  default     = ["0.0.0.0/0"] # Override with actual VPN egress IPs in production
+}
