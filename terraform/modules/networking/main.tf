@@ -403,21 +403,21 @@ resource "aws_security_group" "lambda" {
     description = "HTTPS to VPC endpoints"
   }
 
-  # egress {
-  #   from_port       = 443
-  #   to_port         = 443
-  #   protocol        = "tcp"
-  #   prefix_list_ids = [data.aws_prefix_list.s3.id]
-  #   description     = "HTTPS to S3 via gateway endpoint"
-  # }
+  egress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_prefix_list.s3.id]
+    description     = "HTTPS to S3 via gateway endpoint"
+  }
 
-  # egress {
-  #   from_port       = 443
-  #   to_port         = 443
-  #   protocol        = "tcp"
-  #   prefix_list_ids = [data.aws_prefix_list.dynamodb.id]
-  #   description     = "HTTPS to DynamoDB via gateway endpoint"
-  # }
+  egress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_prefix_list.dynamodb.id]
+    description     = "HTTPS to DynamoDB via gateway endpoint"
+  }
 
   tags = {
     Name = "lambda-sg"
