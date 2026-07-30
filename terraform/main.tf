@@ -76,7 +76,7 @@ module "storage" {
 # Weekly Digest Lambda
 # -----------------------------------------------------------------------------
 module "digest_lambda" {
-  source = "../modules/digest-lambda"
+  source = "./modules/digest-lambda"
 
   audit_table_name = module.storage.upload_audit_table_name
   audit_table_arn  = module.storage.upload_audit_table_arn
