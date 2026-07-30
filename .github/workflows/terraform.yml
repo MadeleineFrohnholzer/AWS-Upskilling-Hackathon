@@ -7,6 +7,7 @@ on:
   push:
     branches: [main]
     paths: ['terraform/**']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,6 +18,37 @@ env:
   AWS_REGION: eu-central-1
 
 jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Detect which team directories changed
+  # ─────────────────────────────────────────────────────────────────────────────
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      shared: ${{ steps.filter.outputs.shared }}
+      team1: ${{ steps.filter.outputs.team1 }}
+      team2: ${{ steps.filter.outputs.team2 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared:
+              - 'terraform/shared/**'
+              - 'terraform/modules/networking/**'
+            team1:
+              - 'terraform/team1/**'
+              - 'terraform/modules/storage/**'
+              - 'terraform/modules/presigned-url-lambda/**'
+              - 'terraform/modules/ingest-lambda/**'
+              - 'terraform/modules/bedrock-kb/**'
+              - 'terraform/modules/audit-lambda/**'
+            team2:
+              - 'terraform/team2/**'
+              - 'terraform/modules/compute/**'
+              - 'chat-ui/**'
+
   # ─────────────────────────────────────────────────────────────────────────────
   # Plan (on PR)
   # ─────────────────────────────────────────────────────────────────────────────
@@ -59,6 +91,7 @@ jobs:
           TF_VAR_entra_client_id: ${{ secrets.ENTRA_CLIENT_ID }}
           TF_VAR_entra_client_secret: ${{ secrets.ENTRA_CLIENT_SECRET }}
           TF_VAR_cognito_callback_urls: '["${{ secrets.COGNITO_CALLBACK_URL }}"]'
+          TF_VAR_alb_certificate_arn: ${{ secrets.TF_VAR_ALB_CERTIFICATE_ARN }}
 
       - name: Post Plan to PR
         uses: actions/github-script@v7
@@ -86,7 +119,7 @@ jobs:
   apply:
     name: "Apply"
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -96,6 +129,20 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Import ALB certificate into ACM
+        id: acm
+        run: |
+          echo "${{ secrets.ALB_CERT_PEM }}" > cert.pem
+          echo "${{ secrets.ALB_KEY_PEM }}" > key.pem
+          ARN=$(aws acm import-certificate \
+            --certificate fileb://cert.pem \
+            --private-key fileb://key.pem \
+            --region eu-central-1 \
+            --query CertificateArn --output text)
+          echo "arn=$ARN" >> $GITHUB_OUTPUT
+          rm -f cert.pem key.pem
+
       - name: Init & Apply
         working-directory: terraform
         run: |
@@ -106,3 +153,4 @@ jobs:
           TF_VAR_entra_client_id: ${{ secrets.TF_VAR_ENTRA_CLIENT_ID }}
           TF_VAR_entra_client_secret: ${{ secrets.TF_VAR_ENTRA_CLIENT_SECRET }}
           TF_VAR_cognito_callback_urls: ${{ secrets.TF_VAR_COGNITO_CALLBACK_URL }}
+          TF_VAR_alb_certificate_arn: ${{ steps.acm.outputs.arn }}

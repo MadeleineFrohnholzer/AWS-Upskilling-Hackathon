@@ -1,0 +1,61 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Accenture brand ── */
+:root {
+  --font-sans: 'Graphik', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Light mode (default) */
+  --background:           0 0% 100%;      /* #FFFFFF */
+  --foreground:           0 0% 7%;        /* #111111 */
+  --card:                 0 0% 96%;       /* #F5F5F5 */
+  --card-foreground:      0 0% 7%;
+  --muted:                0 0% 93%;       /* #EDEDED */
+  --muted-foreground:     0 0% 40%;       /* #666666 */
+  --border:               0 0% 88%;       /* #E0E0E0 */
+  --input:                0 0% 96%;
+  --primary:              276 100% 50%;   /* #A100FF */
+  --primary-foreground:   0 0% 100%;
+  --ring:                 276 100% 50%;
+  --accent:               276 100% 50%;
+  --accent-foreground:    0 0% 100%;
+  --popover:              0 0% 100%;
+  --popover-foreground:   0 0% 7%;
+  --secondary:            0 0% 93%;
+  --secondary-foreground: 0 0% 7%;
+  --destructive:          0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background:           0 0% 0%;        /* #000000 */
+  --foreground:           0 0% 100%;      /* #FFFFFF */
+  --card:                 0 0% 7%;        /* #111111 */
+  --card-foreground:      0 0% 100%;
+  --muted:                0 0% 10%;       /* #1A1A1A */
+  --muted-foreground:     0 0% 53%;       /* #888888 */
+  --border:               0 0% 20%;       /* #333333 */
+  --input:                0 0% 7%;
+  --primary:              276 100% 50%;
+  --primary-foreground:   0 0% 100%;
+  --ring:                 276 100% 50%;
+  --accent:               276 100% 50%;
+  --accent-foreground:    0 0% 100%;
+  --popover:              0 0% 7%;
+  --popover-foreground:   0 0% 100%;
+  --secondary:            0 0% 10%;
+  --secondary-foreground: 0 0% 100%;
+  --destructive:          0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+}

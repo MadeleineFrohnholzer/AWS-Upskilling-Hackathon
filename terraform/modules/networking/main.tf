@@ -5,14 +5,14 @@
 # Outputs are consumed by Team 1 and Team 2 via terraform_remote_state.
 
 # S3 managed prefix list — used to allow Lambda egress to the S3 Gateway endpoint
-# data "aws_prefix_list" "s3" {
-#   name = "com.amazonaws.${var.region}.s3"
-# }
+data "aws_prefix_list" "s3" {
+  name = "com.amazonaws.${var.region}.s3"
+}
 
-# # DynamoDB managed prefix list — used to allow Lambda egress to the DynamoDB Gateway endpoint
-# data "aws_prefix_list" "dynamodb" {
-#   name = "com.amazonaws.${var.region}.dynamodb"
-# }
+# DynamoDB managed prefix list — used to allow Lambda egress to the DynamoDB Gateway endpoint
+data "aws_prefix_list" "dynamodb" {
+  name = "com.amazonaws.${var.region}.dynamodb"
+}
 
 # -----------------------------------------------------------------------------
 # VPC
@@ -314,55 +314,59 @@ resource "aws_vpc_endpoint" "sts" {
 }
 
 # =============================================================================
-# INTERNAL ALB (Skeleton — Team 2 attaches target groups)
+# INTERNET-FACING ALB (IP-restricted to VPN egress IPs)
 # =============================================================================
+# NOTE: This ALB has a public IP but is restricted via security group to only
+# accept traffic from the corporate VPN egress IPs. This is a pragmatic
+# tradeoff for the hackathon — the production architecture uses a fully
+# internal ALB behind VPN with no public endpoint.
 
 # -----------------------------------------------------------------------------
 # ALB Security Group
 # -----------------------------------------------------------------------------
 resource "aws_security_group" "alb" {
-  name_prefix = "internal-alb-"
+  name_prefix = "platform-alb-"
   vpc_id      = aws_vpc.main.id
-  description = "Internal ALB - accepts HTTPS from VPN/corporate network"
+  description = "ALB - accepts HTTPS from VPN egress IPs only"
 
   ingress {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr, "10.0.0.0/8"] # VPC + corporate VPN CIDR
-    description = "HTTPS from VPN and internal"
+    cidr_blocks = var.vpn_egress_cidrs
+    description = "HTTPS from corporate VPN egress IPs"
   }
 
   ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
-    description = "HTTP from VPC (redirect to HTTPS)"
+    cidr_blocks = var.vpn_egress_cidrs
+    description = "HTTP from VPN (redirect to HTTPS)"
   }
 
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = [var.vpc_cidr]
-    description = "Outbound to VPC only"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Outbound to internet (needed for Cognito token validation)"
   }
 
   tags = {
-    Name = "internal-alb-sg"
+    Name = "platform-alb-sg"
   }
 }
 
 # -----------------------------------------------------------------------------
-# Internal Application Load Balancer
+# Internet-Facing Application Load Balancer
 # -----------------------------------------------------------------------------
 resource "aws_lb" "internal" {
   name               = "platform-alb"
-  internal           = true
+  internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.private[*].id
+  subnets            = aws_subnet.public[*].id
 
   tags = {
     Name = "platform-alb"
@@ -403,21 +407,21 @@ resource "aws_security_group" "lambda" {
     description = "HTTPS to VPC endpoints"
   }
 
-  # egress {
-  #   from_port       = 443
-  #   to_port         = 443
-  #   protocol        = "tcp"
-  #   prefix_list_ids = [data.aws_prefix_list.s3.id]
-  #   description     = "HTTPS to S3 via gateway endpoint"
-  # }
+  egress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_prefix_list.s3.id]
+    description     = "HTTPS to S3 via gateway endpoint"
+  }
 
-  # egress {
-  #   from_port       = 443
-  #   to_port         = 443
-  #   protocol        = "tcp"
-  #   prefix_list_ids = [data.aws_prefix_list.dynamodb.id]
-  #   description     = "HTTPS to DynamoDB via gateway endpoint"
-  # }
+  egress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_prefix_list.dynamodb.id]
+    description     = "HTTPS to DynamoDB via gateway endpoint"
+  }
 
   tags = {
     Name = "lambda-sg"
@@ -431,8 +435,8 @@ resource "aws_security_group" "ecs_tasks" {
   description = "ECS Fargate tasks - accepts traffic from ALB"
 
   ingress {
-    from_port       = 8080
-    to_port         = 8080
+    from_port       = 3000
+    to_port         = 3000
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
     description     = "App port from ALB"
@@ -443,7 +447,23 @@ resource "aws_security_group" "ecs_tasks" {
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
-    description = "HTTPS to VPC endpoints"
+    description = "HTTPS to VPC interface endpoints (ECR API, ECR DKR, CloudWatch, STS, Bedrock)"
+  }
+
+  egress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_prefix_list.dynamodb.id]
+    description     = "HTTPS to DynamoDB via gateway endpoint (chat history)"
+  }
+
+  egress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_prefix_list.s3.id]
+    description     = "HTTPS to S3 via gateway endpoint"
   }
 
   tags = {

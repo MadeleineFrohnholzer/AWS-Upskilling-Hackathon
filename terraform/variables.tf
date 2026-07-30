@@ -50,18 +50,22 @@ variable "enable_nat_gateway" {
   default     = false
 }
 
+variable "vpn_egress_cidrs" {
+  description = "Prisma Access VPN egress public IP CIDRs. ALB only accepts inbound from these IPs."
+  type        = list(string)
+  default = [
+    "130.41.87.32/29",  # Germany Central
+    "130.41.82.24/29",  # Germany North
+    "137.83.241.50/31", # Switzerland
+  ]
+}
+
 # -----------------------------------------------------------------------------
 # Compute / App
 # -----------------------------------------------------------------------------
 
-variable "open_webui_image" {
-  description = "Docker image URI for Open WebUI (pushed to ECR before applying)"
-  type        = string
-  default     = ""
-}
-
-variable "proxy_image" {
-  description = "ECR image URI for the bedrock-proxy sidecar. Set after pushing the image."
+variable "chat_ui_image" {
+  description = "Docker image URI for the Next.js chat-ui (pushed to ECR before applying)"
   type        = string
   default     = ""
 }
@@ -99,4 +103,10 @@ variable "cognito_logout_urls" {
   description = "Allowed logout URLs for the Cognito app client"
   type        = list(string)
   default     = []
+}
+
+variable "alb_certificate_arn" {
+  description = "ACM certificate ARN for the ALB HTTPS listener"
+  type        = string
+  default     = ""
 }

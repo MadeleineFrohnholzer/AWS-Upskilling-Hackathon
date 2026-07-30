@@ -67,8 +67,6 @@ resource "aws_bedrockagent_agent" "main" {
 
 # Associate with the Knowledge Base once Team 1 has created it
 resource "aws_bedrockagent_agent_knowledge_base_association" "main" {
-  count = var.knowledge_base_id != "" ? 1 : 0
-
   agent_id             = aws_bedrockagent_agent.main.id
   description          = "Primary document knowledge base for retrieval-augmented responses"
   knowledge_base_id    = var.knowledge_base_id
