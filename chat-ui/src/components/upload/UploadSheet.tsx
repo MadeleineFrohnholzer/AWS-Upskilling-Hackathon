@@ -24,8 +24,9 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-const INDUSTRIES = ['Financial Services', 'Healthcare', 'Technology', 'Energy', 'Retail', 'Other'];
-const DOC_TYPES = ['Contract', 'Report', 'Policy', 'Proposal', 'Invoice', 'Other'];
+const INDUSTRIES = ['FSI', 'PRD - Automotive', 'PRD - Life Science', 'PRD - Industrial', 'PRD - Consumer Goods', 'CMT', 'H&PS', 'RES', 'Other'];
+const DOC_TYPES = ['Architecture', 'Discussion Deck', 'RFP', 'Proposal', 'PoC', 'Case Study', 'Statement of Work (SOW)', 'Assessment / Diagnostic', 'Roadmap', 'Runbook', 'Executive Summary', 'Point of View / Whitepaper', 'Other'];
+const USE_CASES = ['DB Migration', 'Cloud Migration', 'Data & Analytics Platform', 'GenAI / AI Agent', 'Application Modernization', 'Cybersecurity', 'ERP Implementation', 'Infrastructure Optimization / FinOps', 'DevOps / Platform Engineering', 'Digital Transformation', 'Managed Services', 'Disaster Recovery / Resilience', 'Other'];
 
 interface UploadSheetProps {
   open: boolean;
@@ -186,11 +187,13 @@ export function UploadSheet({ open, onOpenChange }: UploadSheetProps) {
 
               <div>
                 <label className="text-muted-foreground text-sm mb-1 block">Use Case</label>
-                <Input
+                <select
                   {...register('useCase')}
-                  placeholder="Optional..."
-                  className="bg-card border-border text-foreground placeholder:text-muted-foreground"
-                />
+                  className="w-full bg-card border border-border rounded-md px-3 py-2 text-foreground text-sm focus:border-[#A100FF] outline-none"
+                >
+                  <option value="">Select use case...</option>
+                  {USE_CASES.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
               </div>
 
               <div>
