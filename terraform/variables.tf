@@ -54,14 +54,8 @@ variable "enable_nat_gateway" {
 # Compute / App
 # -----------------------------------------------------------------------------
 
-variable "open_webui_image" {
-  description = "Docker image URI for Open WebUI (pushed to ECR before applying)"
-  type        = string
-  default     = ""
-}
-
-variable "proxy_image" {
-  description = "ECR image URI for the bedrock-proxy sidecar. Set after pushing the image."
+variable "chat_ui_image" {
+  description = "Docker image URI for the Next.js chat-ui (pushed to ECR before applying)"
   type        = string
   default     = ""
 }

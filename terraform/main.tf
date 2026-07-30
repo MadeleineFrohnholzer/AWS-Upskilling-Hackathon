@@ -41,7 +41,7 @@ locals {
   ecs_tasks_security_group_id = module.networking.ecs_tasks_security_group_id
   account_id                  = data.aws_caller_identity.current.account_id
   region                      = data.aws_region.current.region
-  container_image             = var.open_webui_image != "" ? var.open_webui_image : "${module.compute.ecr_repository_url}:latest"
+  container_image             = var.chat_ui_image != "" ? var.chat_ui_image : "${module.compute.ecr_repository_url}:latest"
 }
 
 # =============================================================================
@@ -148,16 +148,8 @@ module "bedrock_proxy" {
 module "compute" {
   source = "./modules/compute"
 
-  project_name           = var.project_name
-  environment            = var.environment
-  vpc_id                 = local.vpc_id
-  private_subnet_ids     = local.private_subnet_ids
-  alb_arn                = local.alb_arn
-  container_image        = var.open_webui_image
-  proxy_image            = var.proxy_image
-  bedrock_agent_id       = module.bedrock_agent.agent_id
-  bedrock_agent_alias_id = module.bedrock_agent.agent_alias_id
-  ecs_service_name       = "chat-application-service"
+  project_name = var.project_name
+  environment  = var.environment
 }
 
 # =============================================================================
@@ -240,33 +232,8 @@ resource "aws_cognito_user_pool_client" "chat_app" {
 }
 
 # =============================================================================
-# ECS / SSM / IAM / CloudWatch
+# IAM — ECS Task Role
 # =============================================================================
-
-resource "aws_ssm_parameter" "webui_secret_key" {
-  name  = "/chat-application/secret-key"
-  type  = "SecureString"
-  value = "REPLACE_ME_AFTER_FIRST_DEPLOY_MIN_32_CHARS_LONG"
-
-  lifecycle {
-    ignore_changes = [value]
-  }
-}
-
-resource "aws_iam_role_policy" "ecs_task_execution_ssm" {
-  name = "ssm-secret-read"
-  role = module.compute.ecs_task_execution_role_name
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "SSMSecretRead"
-      Effect   = "Allow"
-      Action   = ["ssm:GetParameter", "ssm:GetParameters"]
-      Resource = aws_ssm_parameter.webui_secret_key.arn
-    }]
-  })
-}
 
 resource "aws_iam_role" "ecs_task" {
   name = "platform-chat-application-task"
@@ -282,7 +249,7 @@ resource "aws_iam_role" "ecs_task" {
 }
 
 resource "aws_iam_role_policy" "ecs_task" {
-  name = "open-webui-bedrock-ssm"
+  name = "chat-ui-permissions"
   role = aws_iam_role.ecs_task.id
 
   policy = jsonencode({
@@ -303,18 +270,26 @@ resource "aws_iam_role_policy" "ecs_task" {
         ]
       },
       {
-        Sid      = "SSMRead"
+        Sid    = "DynamoDBChatHistory"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:Query",
+        ]
+        Resource = [
+          module.storage.chat_history_table_arn,
+          "${module.storage.chat_history_table_arn}/index/*",
+        ]
+      },
+      {
+        Sid      = "LambdaPresignedUrl"
         Effect   = "Allow"
-        Action   = ["ssm:GetParameter"]
-        Resource = aws_ssm_parameter.webui_secret_key.arn
-      }
+        Action   = ["lambda:InvokeFunction"]
+        Resource = [module.presigned_url_lambda.lambda_function_arn]
+      },
     ]
   })
-}
-
-resource "aws_cloudwatch_log_group" "open_webui" {
-  name              = "/ecs/open-webui"
-  retention_in_days = 14
 }
 
 # =============================================================================
@@ -345,14 +320,14 @@ resource "aws_lb_listener" "https" {
 
 resource "aws_lb_target_group" "chat_frontend" {
   name        = "chat-application-tg"
-  port        = 8080
+  port        = 3000
   protocol    = "HTTP"
   vpc_id      = local.vpc_id
   target_type = "ip"
 
   health_check {
     enabled             = true
-    path                = "/health"
+    path                = "/api/health"
     protocol            = "HTTP"
     healthy_threshold   = 2
     unhealthy_threshold = 3
@@ -414,8 +389,8 @@ resource "aws_lb_listener_rule" "chat_frontend_noauth" {
 # ECS Task Definition + Service + Autoscaling
 # =============================================================================
 
-resource "aws_ecs_task_definition" "open_webui" {
-  family                   = "open-webui-task"
+resource "aws_ecs_task_definition" "chat_ui" {
+  family                   = "chat-ui-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "1024"
@@ -424,32 +399,28 @@ resource "aws_ecs_task_definition" "open_webui" {
   task_role_arn            = aws_iam_role.ecs_task.arn
 
   container_definitions = jsonencode([{
-    name         = "open-webui"
+    name         = "chat-frontend"
     image        = local.container_image
-    portMappings = [{ containerPort = 8080, protocol = "tcp" }]
+    portMappings = [{ containerPort = 3000, protocol = "tcp" }]
     environment = [
-      { name = "WEBUI_AUTH", value = "true" },
-      { name = "ENABLE_SIGNUP", value = "false" },
-      { name = "DEFAULT_USER_ROLE", value = "user" },
       { name = "AWS_REGION", value = local.region },
       { name = "BEDROCK_AGENT_ID", value = module.bedrock_agent.agent_id },
       { name = "BEDROCK_AGENT_ALIAS_ID", value = module.bedrock_agent.agent_alias_id },
       { name = "KNOWLEDGE_BASE_ID", value = module.bedrock_kb.knowledge_base_id },
+      { name = "DYNAMODB_TABLE_NAME", value = module.storage.chat_history_table_name },
+      { name = "UPLOAD_LAMBDA_NAME", value = module.presigned_url_lambda.lambda_function_name },
+      { name = "NEXT_PUBLIC_APP_NAME", value = "Knowledge Assistant" },
     ]
-    secrets = [{
-      name      = "WEBUI_SECRET_KEY"
-      valueFrom = aws_ssm_parameter.webui_secret_key.arn
-    }]
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.open_webui.name
+        "awslogs-group"         = module.compute.chat_frontend_log_group_name
         "awslogs-region"        = local.region
-        "awslogs-stream-prefix" = "open-webui"
+        "awslogs-stream-prefix" = "chat-ui"
       }
     }
     healthCheck = {
-      command     = ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      command     = ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
       interval    = 30
       timeout     = 5
       retries     = 3
@@ -458,10 +429,10 @@ resource "aws_ecs_task_definition" "open_webui" {
   }])
 }
 
-resource "aws_ecs_service" "open_webui" {
-  name                 = "chat-application-service"
+resource "aws_ecs_service" "chat_ui" {
+  name                 = "chat-ui-service"
   cluster              = module.compute.ecs_cluster_arn
-  task_definition      = aws_ecs_task_definition.open_webui.arn
+  task_definition      = aws_ecs_task_definition.chat_ui.arn
   desired_count        = 1
   launch_type          = "FARGATE"
   force_new_deployment = true
@@ -474,25 +445,25 @@ resource "aws_ecs_service" "open_webui" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.chat_frontend.arn
-    container_name   = "open-webui"
-    container_port   = 8080
+    container_name   = "chat-frontend"
+    container_port   = 3000
   }
 }
 
-resource "aws_appautoscaling_target" "open_webui" {
+resource "aws_appautoscaling_target" "chat_ui" {
   max_capacity       = 4
   min_capacity       = 1
-  resource_id        = "service/${module.compute.ecs_cluster_name}/${aws_ecs_service.open_webui.name}"
+  resource_id        = "service/${module.compute.ecs_cluster_name}/${aws_ecs_service.chat_ui.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
 
-resource "aws_appautoscaling_policy" "open_webui_cpu" {
-  name               = "chat-application-cpu-scaling"
+resource "aws_appautoscaling_policy" "chat_ui_cpu" {
+  name               = "chat-ui-cpu-scaling"
   policy_type        = "TargetTrackingScaling"
-  resource_id        = aws_appautoscaling_target.open_webui.resource_id
-  scalable_dimension = aws_appautoscaling_target.open_webui.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.open_webui.service_namespace
+  resource_id        = aws_appautoscaling_target.chat_ui.resource_id
+  scalable_dimension = aws_appautoscaling_target.chat_ui.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.chat_ui.service_namespace
 
   target_tracking_scaling_policy_configuration {
     predefined_metric_specification {
@@ -500,4 +471,164 @@ resource "aws_appautoscaling_policy" "open_webui_cpu" {
     }
     target_value = 70.0
   }
+}
+
+# -----------------------------------------------------------------------------
+# CloudWatch Alarms — reference the shared ALB (not the compute module's dead ALB)
+# -----------------------------------------------------------------------------
+
+# Data source to resolve the ARN suffix of the shared ALB for CloudWatch dimensions
+data "aws_lb" "shared" {
+  arn = local.alb_arn
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_5xx_rate" {
+  alarm_name          = "${var.project_name}-alb-5xx-rate"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = 1.0
+  alarm_description   = "ALB 5xx error rate exceeded 1% for 2 consecutive minutes"
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "error_rate"
+    expression  = "100 * errors / MAX([errors, requests])"
+    label       = "5xx rate (%)"
+    return_data = true
+  }
+  metric_query {
+    id = "errors"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "HTTPCode_Target_5XX_Count"
+      period      = 60
+      stat        = "Sum"
+      dimensions  = { LoadBalancer = data.aws_lb.shared.arn_suffix }
+    }
+  }
+  metric_query {
+    id = "requests"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "RequestCount"
+      period      = 60
+      stat        = "Sum"
+      dimensions  = { LoadBalancer = data.aws_lb.shared.arn_suffix }
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_latency_p95" {
+  alarm_name          = "${var.project_name}-alb-latency-p95"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = 20
+  alarm_description   = "ALB P95 response time exceeded 20s for 2 consecutive minutes"
+  treat_missing_data  = "notBreaching"
+
+  namespace          = "AWS/ApplicationELB"
+  metric_name        = "TargetResponseTime"
+  period             = 60
+  extended_statistic = "p95"
+  dimensions         = { LoadBalancer = data.aws_lb.shared.arn_suffix }
+}
+
+resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
+  alarm_name          = "${var.project_name}-ecs-cpu"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = 80
+  alarm_description   = "ECS service CPU utilisation exceeded 80% — autoscaling may be lagging"
+  treat_missing_data  = "notBreaching"
+
+  namespace   = "AWS/ECS"
+  metric_name = "CPUUtilization"
+  period      = 60
+  statistic   = "Average"
+  dimensions = {
+    ClusterName = module.compute.ecs_cluster_name
+    ServiceName = aws_ecs_service.chat_ui.name
+  }
+}
+
+# -----------------------------------------------------------------------------
+# CloudWatch Dashboard
+# -----------------------------------------------------------------------------
+
+resource "aws_cloudwatch_dashboard" "main" {
+  dashboard_name = "${var.project_name}-chat-frontend"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ALB Request Count"
+          region = local.region
+          metrics = [[
+            "AWS/ApplicationELB",
+            "RequestCount",
+            "LoadBalancer", data.aws_lb.shared.arn_suffix,
+            { stat = "Sum", period = 60 }
+          ]]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ALB 5xx Count"
+          region = local.region
+          metrics = [[
+            "AWS/ApplicationELB",
+            "HTTPCode_Target_5XX_Count",
+            "LoadBalancer", data.aws_lb.shared.arn_suffix,
+            { stat = "Sum", period = 60, color = "#d62728" }
+          ]]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ALB P95 Latency (s)"
+          region = local.region
+          metrics = [[
+            "AWS/ApplicationELB",
+            "TargetResponseTime",
+            "LoadBalancer", data.aws_lb.shared.arn_suffix,
+            { stat = "p95", period = 60, color = "#ff7f0e" }
+          ]]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ECS CPU Utilisation (%)"
+          region = local.region
+          metrics = [[
+            "AWS/ECS",
+            "CPUUtilization",
+            "ClusterName", module.compute.ecs_cluster_name,
+            "ServiceName", aws_ecs_service.chat_ui.name,
+            { stat = "Average", period = 60, color = "#9467bd" }
+          ]]
+        }
+      }
+    ]
+  })
 }

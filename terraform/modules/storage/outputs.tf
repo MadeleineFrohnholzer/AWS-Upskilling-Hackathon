@@ -47,3 +47,13 @@ output "upload_audit_table_arn" {
   description = "ARN of the upload audit DynamoDB table"
   value       = aws_dynamodb_table.document_audit_trail.arn
 }
+
+output "chat_history_table_name" {
+  description = "Name of the chat history DynamoDB table"
+  value       = aws_dynamodb_table.chat_history.name
+}
+
+output "chat_history_table_arn" {
+  description = "ARN of the chat history DynamoDB table"
+  value       = aws_dynamodb_table.chat_history.arn
+}
