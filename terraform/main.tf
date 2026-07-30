@@ -318,6 +318,28 @@ resource "aws_cloudwatch_log_group" "open_webui" {
 }
 
 # =============================================================================
+# ALB HTTPS Listener (required for Cognito authenticate-cognito action)
+# =============================================================================
+
+resource "aws_lb_listener" "https" {
+  count             = var.alb_certificate_arn != "" ? 1 : 0
+  load_balancer_arn = local.alb_arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.alb_certificate_arn
+
+  default_action {
+    type = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Not found"
+      status_code  = "404"
+    }
+  }
+}
+
+# =============================================================================
 # ALB Target Group + Listener Rules
 # =============================================================================
 
@@ -341,12 +363,13 @@ resource "aws_lb_target_group" "chat_frontend" {
 }
 
 resource "aws_lb_listener_rule" "chat_frontend" {
-  count        = length(compact(var.cognito_callback_urls)) > 0 ? 1 : 0
-  listener_arn = local.alb_listener_arn
+  count        = length(compact(var.cognito_callback_urls)) > 0 && var.alb_certificate_arn != "" ? 1 : 0
+  listener_arn = aws_lb_listener.https[0].arn
   priority     = 100
-  /*
+
   action {
-    type = "authenticate-cognito"
+    type  = "authenticate-cognito"
+    order = 1
     authenticate_cognito {
       user_pool_arn              = aws_cognito_user_pool.main.arn
       user_pool_client_id        = aws_cognito_user_pool_client.chat_app.id
@@ -356,9 +379,10 @@ resource "aws_lb_listener_rule" "chat_frontend" {
       session_timeout            = 28800
     }
   }
-*/
+
   action {
     type             = "forward"
+    order            = 2
     target_group_arn = aws_lb_target_group.chat_frontend.arn
   }
 

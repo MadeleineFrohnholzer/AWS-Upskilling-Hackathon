@@ -100,3 +100,9 @@ variable "cognito_logout_urls" {
   type        = list(string)
   default     = []
 }
+
+variable "alb_certificate_arn" {
+  description = "ACM certificate ARN for the ALB HTTPS listener"
+  type        = string
+  default     = ""
+}
