@@ -1,14 +1,8 @@
-FROM node:22-alpine AS deps
-WORKDIR /app
-COPY package*.json ./
-# Install ALL deps (including devDeps) — builder needs TypeScript + Next.js build tools.
-# The runner stage gets its own lean node_modules from the standalone output, not from here.
-RUN npm ci
 
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN npm ci
 RUN npm run build
 
 FROM node:22-alpine AS runner
