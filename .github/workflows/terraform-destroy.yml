@@ -3,16 +3,6 @@ name: Terraform Destroy
 on:
   workflow_dispatch:
     inputs:
-      stack:
-        description: "Stack to destroy"
-        required: true
-        default: "all"
-        type: choice
-        options:
-          - all
-          - team2
-          - team1
-          - shared
       confirm:
         description: 'Type "destroy" to confirm'
         required: true
@@ -38,16 +28,15 @@ jobs:
             echo "Confirmation failed. You must type 'destroy' exactly."
             exit 1
           fi
-          echo "Confirmation accepted. Proceeding with destroy of: ${{ github.event.inputs.stack }}"
+          echo "Confirmation accepted. Proceeding with destroy."
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Destroy team2 first (depends on shared remote state)
+  # Destroy the unified stack
   # ─────────────────────────────────────────────────────────────────────────────
-  destroy-team2:
-    name: "Destroy: team2"
+  destroy:
+    name: "Destroy"
     runs-on: ubuntu-latest
     needs: guard
-    if: github.event.inputs.stack == 'all' || github.event.inputs.stack == 'team2'
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -58,82 +47,16 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Init & Destroy
-        working-directory: terraform/team2
+        working-directory: terraform
         run: |
           terraform init -input=false
-          terraform destroy -input=false -auto-approve
+          terraform destroy -input=false -auto-approve -refresh=false || {
+            echo "First destroy attempt failed, removing stuck Bedrock resources from state and retrying..."
+            terraform state list | grep -E "aws_bedrockagent_data_source|aws_bedrockagent_knowledge_base" | xargs -r terraform state rm
+            terraform destroy -input=false -auto-approve
+          }
         env:
           TF_VAR_entra_tenant_id: ${{ secrets.TF_VAR_ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id: ${{ secrets.TF_VAR_ENTRA_CLIENT_ID }}
           TF_VAR_entra_client_secret: ${{ secrets.TF_VAR_ENTRA_CLIENT_SECRET }}
-          TF_VAR_cognito_callback_urls: '["${{ secrets.TF_VAR_COGNITO_CALLBACK_URL }}"]'
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Destroy team1 (parallel with team2, both before shared)
-  # ─────────────────────────────────────────────────────────────────────────────
-  destroy-team1:
-    name: "Destroy: team1"
-    runs-on: ubuntu-latest
-    needs: guard
-    if: github.event.inputs.stack == 'all' || github.event.inputs.stack == 'team1'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~> 1.7"
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Init & Destroy
-        working-directory: terraform/team1
-        run: |
-          terraform init -input=false
-          terraform destroy -input=false -auto-approve
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Destroy shared last (team1 and team2 must be gone first)
-  # ─────────────────────────────────────────────────────────────────────────────
-  destroy-shared:
-    name: "Destroy: shared"
-    runs-on: ubuntu-latest
-    needs: [destroy-team2, destroy-team1]
-    if: |
-      always() &&
-      github.event.inputs.stack == 'all' &&
-      (needs.destroy-team2.result == 'success' || needs.destroy-team2.result == 'skipped') &&
-      (needs.destroy-team1.result == 'success' || needs.destroy-team1.result == 'skipped')
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~> 1.7"
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Init & Destroy
-        working-directory: terraform/shared
-        run: |
-          terraform init -input=false
-          terraform destroy -input=false -auto-approve
-
-  destroy-shared-standalone:
-    name: "Destroy: shared (standalone)"
-    runs-on: ubuntu-latest
-    needs: guard
-    if: github.event.inputs.stack == 'shared'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~> 1.7"
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Init & Destroy
-        working-directory: terraform/shared
-        run: |
-          terraform init -input=false
-          terraform destroy -input=false -auto-approve
+          TF_VAR_cognito_callback_urls: ${{ secrets.TF_VAR_COGNITO_CALLBACK_URL }}

@@ -7,6 +7,7 @@
 # -----------------------------------------------------------------------------
 resource "aws_s3_bucket" "landing" {
   bucket_prefix = "document-upload-landing-"
+  force_destroy = true
 
   tags = {
     Name        = "document-upload-landing"
@@ -43,6 +44,7 @@ resource "aws_s3_bucket_public_access_block" "landing" {
 # -----------------------------------------------------------------------------
 resource "aws_s3_bucket" "processed" {
   bucket_prefix = "document-processed-store-"
+  force_destroy = true
 
   tags = {
     Name        = "document-processed-store"
