@@ -226,8 +226,8 @@ resource "aws_cognito_user_pool_client" "chat_app" {
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
   supported_identity_providers         = var.entra_tenant_id != "" ? ["EntraID"] : ["COGNITO"]
 
-  callback_urls = ["http://${module.networking.alb_dns_name}/oauth2/idpresponse"]
-  logout_urls   = ["http://${module.networking.alb_dns_name}/"]
+  callback_urls = ["https://${module.networking.alb_dns_name}/oauth2/idpresponse"]
+  logout_urls   = ["https://${module.networking.alb_dns_name}/"]
 
   access_token_validity  = 1
   id_token_validity      = 1
