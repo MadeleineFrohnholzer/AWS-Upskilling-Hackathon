@@ -12,16 +12,27 @@ export async function POST(req: NextRequest) {
     const { InvokeCommand } = await import('@aws-sdk/client-lambda');
 
     const client = getLambdaClient();
+    const lambdaBody = {
+      filename: body.fileName,
+      Industry: body.industry,
+      DocumentType: body.documentType,
+      ...(body.useCase && { UseCase: body.useCase }),
+      ...(body.client && { Client: body.client }),
+    };
     const command = new InvokeCommand({
       FunctionName: process.env.UPLOAD_LAMBDA_NAME,
-      Payload: new TextEncoder().encode(JSON.stringify(body)),
+      Payload: new TextEncoder().encode(JSON.stringify({ body: JSON.stringify(lambdaBody) })),
     });
 
     const response = await client.send(command);
     const payload = JSON.parse(new TextDecoder().decode(response.Payload));
     const parsed = typeof payload.body === 'string' ? JSON.parse(payload.body) : payload;
 
-    return NextResponse.json({ url: parsed.url });
+    if (parsed.errors) {
+      return NextResponse.json({ error: parsed.errors.join(', ') }, { status: 400 });
+    }
+
+    return NextResponse.json({ url: parsed.upload_url });
   } catch (error) {
     console.error('Upload URL error:', error);
     return NextResponse.json({ error: 'Failed to get upload URL' }, { status: 500 });
