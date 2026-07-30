@@ -22,6 +22,12 @@ variable "knowledge_base_arn" {
   default     = ""
 }
 
+variable "foundation_model_id" {
+  description = "Bedrock foundation model ID for the agent. Must be available in the deployment region."
+  type        = string
+  default     = "anthropic.claude-3-sonnet-20240229-v1:0"
+}
+
 variable "agent_instruction" {
   description = "System instruction that controls how the agent answers questions"
   type        = string
