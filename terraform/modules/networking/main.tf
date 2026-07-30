@@ -5,14 +5,14 @@
 # Outputs are consumed by Team 1 and Team 2 via terraform_remote_state.
 
 # S3 managed prefix list — used to allow Lambda egress to the S3 Gateway endpoint
-# data "aws_prefix_list" "s3" {
-#   name = "com.amazonaws.${var.region}.s3"
-# }
+data "aws_prefix_list" "s3" {
+  name = "com.amazonaws.${var.region}.s3"
+}
 
-# # DynamoDB managed prefix list — used to allow Lambda egress to the DynamoDB Gateway endpoint
-# data "aws_prefix_list" "dynamodb" {
-#   name = "com.amazonaws.${var.region}.dynamodb"
-# }
+# DynamoDB managed prefix list — used to allow Lambda egress to the DynamoDB Gateway endpoint
+data "aws_prefix_list" "dynamodb" {
+  name = "com.amazonaws.${var.region}.dynamodb"
+}
 
 # -----------------------------------------------------------------------------
 # VPC
