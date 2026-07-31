@@ -73,9 +73,26 @@ resource "aws_bedrockagent_agent_knowledge_base_association" "main" {
   knowledge_base_state = "ENABLED"
 }
 
+# This is an ephemeral alias that gets recreated whenever the agent is changed
+# See issue: https://github.com/hashicorp/terraform-provider-aws/issues/37321
+resource "aws_bedrockagent_agent_alias" "ephemeral" {
+  agent_id         = aws_bedrockagent_agent.main.id
+  agent_alias_name = "myagent-ephemeral"
+
+  description = "Ephemeral alias used as a hack to trigger new agent version creation."
+
+  lifecycle {
+    replace_triggered_by = [
+      aws_bedrockagent_agent.main
+    ]
+  }
+}
+
 resource "aws_bedrockagent_agent_alias" "live" {
   agent_id         = aws_bedrockagent_agent.main.id
   agent_alias_name = "live"
 
-  depends_on = [aws_bedrockagent_agent_knowledge_base_association.main]
+  routing_configuration {
+    agent_version = aws_bedrockagent_agent_alias.ephemeral.routing_configuration[0].agent_version
+  }
 }

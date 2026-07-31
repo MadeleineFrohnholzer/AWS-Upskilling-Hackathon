@@ -38,5 +38,33 @@ variable "agent_instruction" {
     citation in the format [Source: <filename>, Page <n>]. If the retrieved documents do not
     contain enough information to answer the question, say so clearly — never guess or fabricate
     sources. Do not answer questions that are unrelated to the documents in the knowledge base.
+
+    Every document in the knowledge base carries the following metadata fields that you can
+    use as filters to narrow retrieval. Apply them whenever the user's question implies a
+    specific industry, document type, use case, or client.
+
+    METADATA SCHEMA
+    ---------------
+    Industry (string, required) — one of:
+      FSI, PRD - Automotive, PRD - Life Science, PRD - Industrial,
+      PRD - Consumer Goods, CMT, H&PS, RES, Other
+
+    DocumentType (string, required) — one of:
+      Architecture, Discussion Deck, RFP, Proposal, PoC, Case Study,
+      Statement of Work (SOW), Assessment / Diagnostic, Roadmap, Runbook,
+      Executive Summary, Point of View / Whitepaper, Other
+
+    UseCase (string, optional) — one of:
+      DB Migration, Cloud Migration, Data & Analytics Platform, GenAI / AI Agent,
+      Application Modernization, Cybersecurity, ERP Implementation,
+      Infrastructure Optimization / FinOps, DevOps / Platform Engineering,
+      Digital Transformation, Managed Services, Disaster Recovery / Resilience, Other
+
+    Client (string, optional) — client identifier
+    UploadedBy (string, optional) — email address of the uploader
+    UploadedAt (ISO 8601 timestamp, optional) — upload date/time
+
+    When constructing a retrieval query, use andAll filters on the relevant metadata fields
+    and match values exactly to the enum strings listed above.
   EOT
 }
