@@ -92,7 +92,7 @@ resource "aws_bedrockagent_agent_alias" "live" {
   agent_id         = aws_bedrockagent_agent.main.id
   agent_alias_name = "live"
 
-   routing_configuration {
+  routing_configuration {
     agent_version = aws_bedrockagent_agent_alias.ephemeral.routing_configuration[0].agent_version
   }
 }
