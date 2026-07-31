@@ -86,6 +86,8 @@ resource "aws_bedrockagent_agent_alias" "ephemeral" {
       aws_bedrockagent_agent.main
     ]
   }
+
+  depends_on = [aws_bedrockagent_agent_knowledge_base_association.main]
 }
 
 resource "aws_bedrockagent_agent_alias" "live" {
