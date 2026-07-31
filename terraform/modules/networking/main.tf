@@ -356,7 +356,15 @@ resource "aws_security_group" "alb" {
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["212.23.247.225/32"]
-    description = "HTTPS from developer IP"
+    description = "HTTPS from Accenture Zurich Sihlstrasse Office"
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["164.128.151.249/32"]
+    description = "HTTPS from Zoltan public IP"
   }
 
   ingress {
