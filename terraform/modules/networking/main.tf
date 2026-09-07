@@ -422,54 +422,45 @@ resource "aws_lb_listener" "http" {
 # =============================================================================
 # VPC FLOW LOGS
 # =============================================================================
+# S3 destination avoids creating an IAM role (CloudWatch delivery requires one).
 
-resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
-  name              = "/aws/vpc/flow-logs/${var.project_name}"
-  retention_in_days = 90
+resource "aws_s3_bucket" "vpc_flow_logs" {
+  bucket_prefix = "${var.project_name}-vpc-flow-logs-"
+  force_destroy = true
 
   tags = {
     Name = "${var.project_name}-vpc-flow-logs"
   }
 }
 
-resource "aws_iam_role" "vpc_flow_logs" {
-  name_prefix = "vpc-flow-logs-"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "vpc-flow-logs.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
+resource "aws_s3_bucket_public_access_block" "vpc_flow_logs" {
+  bucket                  = aws_s3_bucket.vpc_flow_logs.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
 }
 
-resource "aws_iam_role_policy" "vpc_flow_logs" {
-  name = "vpc-flow-logs-delivery"
-  role = aws_iam_role.vpc_flow_logs.id
+resource "aws_s3_bucket_lifecycle_configuration" "vpc_flow_logs" {
+  bucket = aws_s3_bucket.vpc_flow_logs.id
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-        "logs:DescribeLogGroups",
-        "logs:DescribeLogStreams",
-      ]
-      Resource = "${aws_cloudwatch_log_group.vpc_flow_logs.arn}:*"
-    }]
-  })
+  rule {
+    id     = "expire-after-90-days"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = 90
+    }
+  }
 }
 
 resource "aws_flow_log" "main" {
-  iam_role_arn    = aws_iam_role.vpc_flow_logs.arn
-  log_destination = aws_cloudwatch_log_group.vpc_flow_logs.arn
-  traffic_type    = "ALL"
-  vpc_id          = aws_vpc.main.id
+  log_destination      = "${aws_s3_bucket.vpc_flow_logs.arn}/flow-logs/"
+  log_destination_type = "s3"
+  traffic_type         = "ALL"
+  vpc_id               = aws_vpc.main.id
 
   tags = {
     Name = "${var.project_name}-vpc-flow-log"
