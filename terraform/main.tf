@@ -192,21 +192,6 @@ resource "aws_cognito_user_pool" "main" {
   }
 }
 
-# =============================================================================
-# IAM Account Password Policy
-# =============================================================================
-
-resource "aws_iam_account_password_policy" "main" {
-  minimum_password_length        = 14
-  require_lowercase_characters   = true
-  require_uppercase_characters   = true
-  require_numbers                = true
-  require_symbols                = true
-  allow_users_to_change_password = true
-  hard_expiry                    = false
-  max_password_age               = 90
-  password_reuse_prevention      = 12
-}
 
 resource "aws_cognito_user_pool_domain" "main" {
   domain       = "chat-application-auth"
