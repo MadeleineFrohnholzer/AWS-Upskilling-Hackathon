@@ -182,6 +182,30 @@ resource "aws_cognito_user_pool" "main" {
     require_uppercase                = true
     temporary_password_validity_days = 1
   }
+
+  # OPTIONAL allows Entra ID federated users to bypass MFA while enforcing
+  # TOTP for any native Cognito accounts.
+  mfa_configuration = "OPTIONAL"
+
+  software_token_mfa_configuration {
+    enabled = true
+  }
+}
+
+# =============================================================================
+# IAM Account Password Policy
+# =============================================================================
+
+resource "aws_iam_account_password_policy" "main" {
+  minimum_password_length        = 14
+  require_lowercase_characters   = true
+  require_uppercase_characters   = true
+  require_numbers                = true
+  require_symbols                = true
+  allow_users_to_change_password = true
+  hard_expiry                    = false
+  max_password_age               = 90
+  password_reuse_prevention      = 12
 }
 
 resource "aws_cognito_user_pool_domain" "main" {

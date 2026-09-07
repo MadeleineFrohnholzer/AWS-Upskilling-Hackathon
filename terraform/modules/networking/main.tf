@@ -420,6 +420,63 @@ resource "aws_lb_listener" "http" {
 }
 
 # =============================================================================
+# VPC FLOW LOGS
+# =============================================================================
+
+resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
+  name              = "/aws/vpc/flow-logs/${var.project_name}"
+  retention_in_days = 90
+
+  tags = {
+    Name = "${var.project_name}-vpc-flow-logs"
+  }
+}
+
+resource "aws_iam_role" "vpc_flow_logs" {
+  name_prefix = "vpc-flow-logs-"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "vpc-flow-logs.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "vpc_flow_logs" {
+  name = "vpc-flow-logs-delivery"
+  role = aws_iam_role.vpc_flow_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+      ]
+      Resource = "${aws_cloudwatch_log_group.vpc_flow_logs.arn}:*"
+    }]
+  })
+}
+
+resource "aws_flow_log" "main" {
+  iam_role_arn    = aws_iam_role.vpc_flow_logs.arn
+  log_destination = aws_cloudwatch_log_group.vpc_flow_logs.arn
+  traffic_type    = "ALL"
+  vpc_id          = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.project_name}-vpc-flow-log"
+  }
+}
+
+# =============================================================================
 # BASELINE SECURITY GROUPS
 # =============================================================================
 
@@ -455,6 +512,20 @@ resource "aws_security_group" "lambda" {
 
   tags = {
     Name = "lambda-sg"
+  }
+}
+
+# =============================================================================
+# DEFAULT SECURITY GROUP LOCKDOWN
+# =============================================================================
+# Terraform takes ownership of the default SG and removes the AWS-supplied
+# allow-all egress rule. All workloads use explicitly scoped security groups.
+
+resource "aws_default_security_group" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "default-sg-locked"
   }
 }
 

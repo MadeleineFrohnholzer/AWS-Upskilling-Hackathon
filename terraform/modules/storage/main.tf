@@ -101,6 +101,51 @@ resource "aws_dynamodb_table" "sessions" {
 }
 
 # -----------------------------------------------------------------------------
+# S3: Enforce HTTPS-only access
+# -----------------------------------------------------------------------------
+resource "aws_s3_bucket_policy" "landing_https_only" {
+  bucket = aws_s3_bucket.landing.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyNonHttpsAccess"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.landing.arn,
+        "${aws_s3_bucket.landing.arn}/*",
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
+  depends_on = [aws_s3_bucket_public_access_block.landing]
+}
+
+resource "aws_s3_bucket_policy" "processed_https_only" {
+  bucket = aws_s3_bucket.processed.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyNonHttpsAccess"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.processed.arn,
+        "${aws_s3_bucket.processed.arn}/*",
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
+  depends_on = [aws_s3_bucket_public_access_block.processed]
+}
+
+# -----------------------------------------------------------------------------
 # S3 CORS: allow browsers to PUT directly to the landing bucket via presigned URL
 resource "aws_s3_bucket_cors_configuration" "landing" {
   bucket = aws_s3_bucket.landing.id
