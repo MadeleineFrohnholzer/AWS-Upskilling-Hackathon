@@ -160,11 +160,11 @@ resource "aws_security_group" "vpc_endpoints" {
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "HTTPS responses back into VPC"
   }
 
   tags = {
@@ -376,11 +376,19 @@ resource "aws_security_group" "alb" {
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "HTTPS to ECS targets in private subnets"
+  }
+
+  egress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "Outbound to internet (needed for Cognito token validation)"
+    description = "HTTPS to Cognito for token validation"
   }
 
   tags = {
