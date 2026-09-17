@@ -185,7 +185,7 @@ resource "aws_cognito_user_pool" "main" {
 
   # OPTIONAL allows Entra ID federated users to bypass MFA while enforcing
   # TOTP for any native Cognito accounts.
-  mfa_configuration = "OPTIONAL"
+  mfa_configuration = "ON"
 
   software_token_mfa_configuration {
     enabled = true
