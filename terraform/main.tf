@@ -29,19 +29,6 @@ provider "aws" {
   }
 }
 
-provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
-
-  default_tags {
-    tags = {
-      Project     = var.project_name
-      Environment = var.environment
-      ManagedBy   = "terraform"
-    }
-  }
-}
-
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
@@ -176,33 +163,6 @@ module "compute" {
   environment  = var.environment
 }
 
-# =============================================================================
-# S3: CloudFormation staging bucket — enforce HTTPS-only (us-east-1)
-# =============================================================================
-# This bucket is auto-created by AWS CloudFormation and cannot be managed as
-# an aws_s3_bucket resource. We attach a bucket policy only.
-
-resource "aws_s3_bucket_policy" "cf_templates_https_only" {
-  provider = aws.us_east_1
-  bucket   = "cf-templates-idgjmss818410-us-east-1"
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid       = "DenyNonHttpsAccess"
-      Effect    = "Deny"
-      Principal = "*"
-      Action    = "s3:*"
-      Resource = [
-        "arn:aws:s3:::cf-templates-idgjmss818410-us-east-1",
-        "arn:aws:s3:::cf-templates-idgjmss818410-us-east-1/*",
-      ]
-      Condition = {
-        Bool = { "aws:SecureTransport" = "false" }
-      }
-    }]
-  })
-}
 
 # =============================================================================
 # Cognito User Pool + Entra ID SSO Federation
