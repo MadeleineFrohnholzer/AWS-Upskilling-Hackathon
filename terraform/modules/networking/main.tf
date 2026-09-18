@@ -387,8 +387,16 @@ resource "aws_security_group" "alb" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTPS to Cognito for token validation"
+    cidr_blocks = var.vpn_egress_cidrs
+    description = "HTTPS to Cognito via corporate VPN egress IPs"
+  }
+
+  egress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["212.23.247.225/32"]
+    description = "HTTPS to Cognito via Accenture Zurich Sihlstrasse Office"
   }
 
   tags = {
