@@ -115,8 +115,95 @@ resource "aws_iam_openid_connect_provider" "github" {
   ]
 }
 
+resource "aws_iam_policy" "github_actions" {
+  name        = "GitHubActions-aabg-agentic-platform-policy"
+  description = "CI/CD permissions for aabg-agentic-platform Terraform pipelines"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "TerraformStateAndStorage"
+        Effect   = "Allow"
+        Action   = ["s3:*", "dynamodb:*"]
+        Resource = "*"
+      },
+      {
+        Sid      = "Networking"
+        Effect   = "Allow"
+        Action   = ["ec2:*", "elasticloadbalancing:*"]
+        Resource = "*"
+      },
+      {
+        Sid      = "Compute"
+        Effect   = "Allow"
+        Action   = ["ecs:*", "ecr:*", "lambda:*", "logs:*", "events:*"]
+        Resource = "*"
+      },
+      {
+        Sid      = "APIGateway"
+        Effect   = "Allow"
+        Action   = ["apigateway:*", "execute-api:*"]
+        Resource = "*"
+      },
+      {
+        Sid      = "AI"
+        Effect   = "Allow"
+        Action   = ["bedrock:*", "bedrock-agent:*", "s3vectors:*"]
+        Resource = "*"
+      },
+      {
+        Sid    = "Auth"
+        Effect = "Allow"
+        Action = ["cognito-idp:*"]
+        Resource = "*"
+      },
+      {
+        Sid    = "Messaging"
+        Effect = "Allow"
+        Action = ["ses:*"]
+        Resource = "*"
+      },
+      {
+        Sid    = "IAMForManagedResources"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:GetRole",
+          "iam:ListRoles",
+          "iam:PutRolePolicy",
+          "iam:DeleteRolePolicy",
+          "iam:GetRolePolicy",
+          "iam:ListRolePolicies",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:ListAttachedRolePolicies",
+          "iam:PassRole",
+          "iam:TagRole",
+          "iam:UntagRole",
+          "iam:ListInstanceProfilesForRole",
+          "iam:GetOpenIDConnectProvider",
+          "iam:CreateOpenIDConnectProvider",
+          "iam:DeleteOpenIDConnectProvider",
+          "iam:UpdateOpenIDConnectProviderThumbprint",
+          "iam:AddClientIDToOpenIDConnectProvider",
+          "iam:TagOpenIDConnectProvider",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid      = "STSAuth"
+        Effect   = "Allow"
+        Action   = ["sts:GetCallerIdentity"]
+        Resource = "*"
+      },
+    ]
+  })
+}
+
 resource "aws_iam_role" "github_actions" {
-  name = "GitHubActions-aabg-agentic-platform"
+  name = "github_actions_role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -136,16 +223,14 @@ resource "aws_iam_role" "github_actions" {
   })
 }
 
-# Attach the same policy as the existing GithubActionsHackathon role.
-# Pass the ARN via: terraform apply -var="github_actions_policy_arn=arn:aws:iam::064453091991:policy/<PolicyName>"
-resource "aws_iam_role_policy_attachment" "github_actions_terraform" {
+resource "aws_iam_role_policy_attachment" "github_actions" {
   role       = aws_iam_role.github_actions.name
-  policy_arn = var.github_actions_policy_arn
+  policy_arn = aws_iam_policy.github_actions.arn
 }
 
 output "github_actions_role_arn" {
-  description = "Set this as AWS_ROLE_ARN secret in AccentureCodeFoundry/314259_aabg-agentic-platform"
-  value       = aws_iam_role.github_actions.arn
+  description = "AWS_ROLE_ARN secret value for AccentureCodeFoundry/314259_aabg-agentic-platform"
+  value       = "arn:aws:iam::064453091991:role/github_actions_role"
 }
 
 # -----------------------------------------------------------------------------
