@@ -1,0 +1,142 @@
+name: Terraform Backend
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['terraform/backend/**']
+  push:
+    branches: [main]
+    paths: ['terraform/backend/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+env:
+  AWS_REGION: eu-central-1
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Plan (on PR)
+  # ─────────────────────────────────────────────────────────────────────────────
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: terraform/backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.7"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive -diff
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -input=false -no-color
+        continue-on-error: true
+
+      - name: Post Plan to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `#### 📋 Terraform Backend Plan
+            \`\`\`
+            ${{ steps.plan.outputs.stdout }}
+            \`\`\`
+            *Pushed by: @${{ github.actor }}*`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      - if: steps.plan.outcome == 'failure'
+        name: Plan Status
+        run: exit 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Import & Apply (on merge to main or manual dispatch)
+  # ─────────────────────────────────────────────────────────────────────────────
+  import-and-apply:
+    name: Import & Apply
+    runs-on: ubuntu-latest
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: terraform/backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.7"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Import existing resources into state
+        run: |
+          import_if_missing() {
+            local resource="$1"
+            local id="$2"
+            if terraform state list "$resource" 2>/dev/null | grep -qF "$resource"; then
+              echo "Already in state: $resource"
+            else
+              echo "Importing: $resource <- $id"
+              terraform import "$resource" "$id"
+            fi
+          }
+
+          ACCOUNT_ID=064453091991
+          POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/GitHubActions-aabg-agentic-platform-policy"
+
+          import_if_missing aws_s3_bucket.terraform_state \
+            "hackathon-tf-state-${ACCOUNT_ID}"
+          import_if_missing aws_s3_bucket_versioning.terraform_state \
+            "hackathon-tf-state-${ACCOUNT_ID}"
+          import_if_missing aws_s3_bucket_server_side_encryption_configuration.terraform_state \
+            "hackathon-tf-state-${ACCOUNT_ID}"
+          import_if_missing aws_s3_bucket_public_access_block.terraform_state \
+            "hackathon-tf-state-${ACCOUNT_ID}"
+          import_if_missing aws_s3_bucket_policy.terraform_state_https_only \
+            "hackathon-tf-state-${ACCOUNT_ID}"
+          import_if_missing aws_dynamodb_table.terraform_locks \
+            hackathon-tf-locks
+          import_if_missing aws_iam_openid_connect_provider.github \
+            "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+          import_if_missing aws_iam_policy.github_actions \
+            "$POLICY_ARN"
+          import_if_missing aws_iam_role.github_actions \
+            github_actions_role
+          import_if_missing aws_iam_role_policy_attachment.github_actions \
+            "github_actions_role/${POLICY_ARN}"
+
+      - name: Terraform Apply
+        run: terraform apply -input=false -auto-approve

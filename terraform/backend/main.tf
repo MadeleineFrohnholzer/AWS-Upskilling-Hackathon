@@ -13,6 +13,14 @@ terraform {
       version = "~> 6.0"
     }
   }
+
+  backend "s3" {
+    bucket         = "hackathon-tf-state-064453091991"
+    key            = "backend/terraform.tfstate"
+    region         = "eu-central-1"
+    dynamodb_table = "hackathon-tf-locks"
+    encrypt        = true
+  }
 }
 
 provider "aws" {
