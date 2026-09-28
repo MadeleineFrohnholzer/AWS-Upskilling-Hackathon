@@ -136,10 +136,11 @@ resource "aws_iam_role" "github_actions" {
   })
 }
 
-# Attach the same policy as the existing GithubActionsHackathon role
+# Attach the same policy as the existing GithubActionsHackathon role.
+# Pass the ARN via: terraform apply -var="github_actions_policy_arn=arn:aws:iam::064453091991:policy/<PolicyName>"
 resource "aws_iam_role_policy_attachment" "github_actions_terraform" {
   role       = aws_iam_role.github_actions.name
-  policy_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/TerraformDeployPolicy"
+  policy_arn = var.github_actions_policy_arn
 }
 
 output "github_actions_role_arn" {
